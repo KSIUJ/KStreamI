@@ -27,16 +27,33 @@ _TBD_
 
 ## Getting started
 
-<!-- TODO: fill in as the client and server become runnable -->
-
 ### Prerequisites
-_TBD_
 
-### Running the server
-_TBD_
+- Docker
+- Docker Compose plugin
 
-### Running the client
-_TBD_
+
+### Run
+
+From the project root, run:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+- Frontend: <http://localhost:5173>
+- API: <http://localhost:8000>
+- API documentation: <http://localhost:8000/docs>
+
+To stop the application, press `Ctrl+C`.
+
+To stop and remove the containers, run:
+
+```bash
+docker compose down
+```
 
 ## Project structure
 _TBD_
