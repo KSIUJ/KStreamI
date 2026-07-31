@@ -12,11 +12,20 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, status, userId }: AppLayoutProps) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex bg-slate-950">
+      <div className="hidden lg:flex w-4/12 border-r border-slate-800 overflow-hidden relative">
+        <img 
+          src="/logo.png" 
+          alt="Moja grafika" 
+          className="absolute w-[100%] max-w-none h-auto left-10 -top-5"
+        />
+      </div>
+
+  {/* 2. PRAWA KOLUMNA todo be*/}
+  <div className="flex-1 flex flex-col">
+    {/* <div className="absolute top-180 left-150 w-250 h-96 bg-blue-600/30 rounded-full blur-[220px] pointer-events-none" /> */}
         {/* NAGŁÓWEK */}
-        <header className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+        <header className="p-6 lg:px-12 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center gap-2">
             <Tv className="w-6 h-6 text-emerald-500 shrink-0" />
             <span className="font-bold text-lg tracking-wide leading-none translate-y-[3px]">
@@ -70,8 +79,10 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
         </header>
 
         {/* EKRANY (ZMIENNA ZAWARTOŚĆ) */}
-        <main className="p-6 flex-1 flex flex-col justify-center gap-6">
-          {children}
+        <main className="p-6 flex-1 flex flex-col justify-center gap-6 items-center">
+          <div className="w-full max-w-md">
+            {children}
+          </div>
         </main>
 
         {/* STOPKA (WSPÓLNA) */}

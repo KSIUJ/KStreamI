@@ -35,6 +35,7 @@ export default function App() {
       {status === "STREAMING" && (
         <StreamingScreen onStopStreaming={() => setStatus("LOBBY")} />
       )}
+    
     </AppLayout>
   )
 }
