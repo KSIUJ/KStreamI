@@ -75,7 +75,7 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors"
+              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors cursor-pointer"
               title="Zmień język / Change language"
             >
               <Globe className="w-4 h-4" />
@@ -84,7 +84,7 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors"
+              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors cursor-pointer"
               title="Przełącz motyw"
             >
               <Sun className="w-4 h-4" />

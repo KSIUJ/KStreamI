@@ -21,7 +21,7 @@ export function StreamingScreen({ onStopStreaming }: StreamingScreenProps) {
 
       <Button
         onClick={onStopStreaming}
-        className="w-full h-14 text-lg font-bold bg-red-600 hover:bg-red-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-red-950/50"
+        className="w-full h-14 text-lg font-bold bg-red-600 hover:bg-red-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-red-950/50 cursor-pointer transition-all"
       >
         <StopCircle className="w-6 h-6" />
         Zakończ udostępnianie

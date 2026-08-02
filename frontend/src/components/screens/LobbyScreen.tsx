@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
 
@@ -14,6 +15,20 @@ export function LobbyScreen({
   onStartStreaming,
   onDisconnect,
 }: LobbyScreenProps) {
+
+  // Globalny listener na klawisz Enter dla całego ekranu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !serverBusy) {
+        e.preventDefault()
+        onStartStreaming()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [serverBusy, onStartStreaming])
+
   return (
     <div className="flex flex-col gap-5 text-center">
       <div>
@@ -48,26 +63,29 @@ export function LobbyScreen({
 
       <div className="flex flex-col gap-2">
         <Button
+          type="button"
           disabled={serverBusy}
           onClick={onStartStreaming}
-          className="w-full h-12 text-base font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+          className="w-full h-12 text-base font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed transition-all"
         >
           Rozpocznij udostępnianie
         </Button>
 
         <Button
-        variant="ghost"
-        onClick={onDisconnect}
-        className="w-full bg-slate-800 text-slate-400 font-normal hover:bg-slate-800/80 hover:text-slate-400 transition-all"
+          type="button"
+          variant="ghost"
+          onClick={onDisconnect}
+          className="w-full bg-slate-800 text-slate-300 font-normal border border-slate-700/50 hover:bg-slate-700 hover:text-slate-100 transition-all cursor-pointer"
         >
-        Rozłącz
+          Rozłącz
         </Button>
       </div>
 
       {/* Dev Tool */}
       <button
+        type="button"
         onClick={() => setServerBusy(!serverBusy)}
-        className="text-xs text-slate-500 underline mt-2 hover:text-slate-400"
+        className="text-xs text-slate-500 underline mt-2 hover:text-slate-400 cursor-pointer"
       >
         [Dev Tool]: Przełącz status serwera (Zajęty/Wolny)
       </button>
