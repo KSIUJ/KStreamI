@@ -1,6 +1,7 @@
 import { ReactNode } from "react"
 import { Tv, Sun, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/ui/logo"
 
 type StreamStatus = "DISCONNECTED" | "LOBBY" | "STREAMING"
 
@@ -11,51 +12,85 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children, status, userId }: AppLayoutProps) {
+  // Punkty skosu (topX = góra 40%, bottomX = dół 35%)
+  const topX = 40;
+  const bottomX = 35;
+
+  const clipLeft = `polygon(0 0, ${topX}% 0, ${bottomX}% 100%, 0 100%)`
+
+  const headerPadding = `${topX + 3}%`
+  const footerPadding = `${bottomX + 3}%`
+  const mainPadding = `${(topX + bottomX) / 2 + 3}%`
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex bg-slate-950">
-      <div className="hidden lg:flex w-4/12 border-r border-slate-800 overflow-hidden relative">
-        <img 
-          src="/logo.png" 
-          alt="Moja grafika" 
-          className="absolute w-[100%] max-w-none h-auto left-10 -top-5"
-        />
+    <div className="min-h-screen text-slate-100 flex bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 relative overflow-hidden">
+      
+      {/* 1. LEWY PANEL Z LOGIEM (Tylko na dużych ekranach lg:) */}
+      <div 
+        className="hidden lg:block absolute inset-0 z-30 bg-gradient-to-b from-slate-900/90 via-slate-900/80 to-slate-950/90 backdrop-blur-md pointer-events-none"
+        style={{ clipPath: clipLeft }}
+      >
+        <div className="w-[37.5%] h-full flex items-center justify-center pl-[3vw] pr-[1vw]">
+          <Logo className="h-[105vh] w-auto scale-110 transform translate-x-[3vw] object-contain" />
+        </div>
       </div>
 
-  {/* 2. PRAWA KOLUMNA todo be*/}
-  <div className="flex-1 flex flex-col">
-    {/* <div className="absolute top-180 left-150 w-250 h-96 bg-blue-600/30 rounded-full blur-[220px] pointer-events-none" /> */}
+      {/* 2. LINIA PODZIAŁU (Tylko na dużych ekranach lg:) */}
+      <svg 
+        className="hidden lg:block absolute inset-0 w-full h-full z-30 pointer-events-none drop-shadow-[-4px_0_8px_rgba(0,0,0,0.7)]"
+      >
+        <defs>
+          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#475569" />
+            <stop offset="45%" stopColor="#312e81" />
+            <stop offset="100%" stopColor="#065f46" />
+          </linearGradient>
+        </defs>
+        <line 
+          x1={`${topX}%`} 
+          y1="0" 
+          x2={`${bottomX}%`} 
+          y2="100%" 
+          stroke="url(#lineGradient)" 
+          strokeWidth="3"
+        />
+      </svg>
+
+      {/* 3. PRAWA STRONA Z ZAWARTOŚCIĄ */}
+      <div className="flex-1 flex flex-col relative z-10 w-full min-h-screen">
+        
         {/* NAGŁÓWEK */}
-        <header className="p-6 lg:px-12 flex items-center justify-between bg-slate-900/50">
+        <header 
+          className="p-4 sm:p-6 lg:pr-12 flex items-center justify-between bg-slate-900/60 backdrop-blur-md border-b border-slate-800/50 w-full lg:[padding-left:var(--pl)]"
+          style={{ "--pl": headerPadding } as React.CSSProperties}
+        >
           <div className="flex items-center gap-2">
             <Tv className="w-6 h-6 text-emerald-500 shrink-0" />
             <span className="font-bold text-lg tracking-wide leading-none translate-y-[3px]">
-                KStreamI
+              KStreamI
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Przycisk zmiany języka */}
             <Button
-            variant="ghost"
-            size="icon"
-            className="w-8 h-8 text-slate-400 hover:bg-slate-400 hover:text-slate-900 transition-colors"
-            title="Zmień język / Change language"
+              variant="ghost"
+              size="icon"
+              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors"
+              title="Zmień język / Change language"
             >
-            <Globe className="w-4 h-4" />
+              <Globe className="w-4 h-4" />
             </Button>
 
-            {/* Przycisk zmiany motywu */}
             <Button
-            variant="ghost"
-            size="icon"
-            className="w-8 h-8 text-slate-400 hover:bg-slate-400 hover:text-slate-900 transition-colors"
-            title="Przełącz motyw"
+              variant="ghost"
+              size="icon"
+              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors"
+              title="Przełącz motyw"
             >
-            <Sun className="w-4 h-4" />
+              <Sun className="w-4 h-4" />
             </Button>
 
-            {/* Dynamiczny wskaźnik statusu */}
-            <div className="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 ml-1">
+            <div className="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/60 ml-1">
               {status === "DISCONNECTED" && (
                 <>
                   <span className="w-2 h-2 rounded-full bg-slate-500" />
@@ -79,14 +114,20 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
         </header>
 
         {/* EKRANY (ZMIENNA ZAWARTOŚĆ) */}
-        <main className="p-6 flex-1 flex flex-col justify-center gap-6 items-center">
+        <main 
+          className="p-6 flex-1 flex flex-col justify-center items-center w-full lg:[padding-left:var(--pl)]"
+          style={{ "--pl": mainPadding } as React.CSSProperties}
+        >
           <div className="w-full max-w-md">
             {children}
           </div>
         </main>
 
-        {/* STOPKA (WSPÓLNA) */}
-        <footer className="p-3 bg-slate-950 border-t border-slate-800 text-xs text-slate-500 flex justify-between items-center">
+        {/* STOPKA */}
+        <footer 
+          className="p-3 sm:px-6 lg:pr-6 bg-slate-950/80 backdrop-blur-md border-t border-slate-800/50 text-xs text-slate-500 flex justify-between items-center w-full lg:[padding-left:var(--pl)]"
+          style={{ "--pl": footerPadding } as React.CSSProperties}
+        >
           <span>
             {status === "DISCONNECTED" && "Oczekiwanie na akcję użytkownika"}
             {status === "LOBBY" && `Tymczasowe ID: ${userId}`}
