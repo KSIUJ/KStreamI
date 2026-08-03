@@ -1,22 +1,22 @@
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
+import { DevMockControls } from "@/components/dev/DevMockControls"
 
 interface LobbyScreenProps {
   serverBusy: boolean
-  setServerBusy: (value: boolean) => void
+  emitMockEvent: (eventObject: object) => void
   onStartStreaming: () => void
   onDisconnect: () => void
 }
 
 export function LobbyScreen({
   serverBusy,
-  setServerBusy,
+  emitMockEvent,
   onStartStreaming,
   onDisconnect,
 }: LobbyScreenProps) {
 
-  // Globalny listener na klawisz Enter dla całego ekranu
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter" && !serverBusy) {
@@ -36,9 +36,8 @@ export function LobbyScreen({
         <p className="text-sm text-slate-400 mt-1">Gotowy do udostępniania</p>
       </div>
 
-      {/* Status serwera */}
       <div
-        className={`p-4 rounded-xl border flex items-center gap-3 text-left ${
+        className={`p-4 rounded-xl border flex items-center gap-3 text-left transition-colors ${
           serverBusy
             ? "bg-red-950/30 border-red-800/50 text-red-200"
             : "bg-emerald-950/30 border-emerald-800/50 text-emerald-200"
@@ -81,14 +80,11 @@ export function LobbyScreen({
         </Button>
       </div>
 
-      {/* Dev Tool */}
-      <button
-        type="button"
-        onClick={() => setServerBusy(!serverBusy)}
-        className="text-xs text-slate-500 underline mt-2 hover:text-slate-400 cursor-pointer"
-      >
-        [Dev Tool]: Przełącz status serwera (Zajęty/Wolny)
-      </button>
+      {/* --- MOCK CONTROLS --- */}
+      <DevMockControls
+        serverBusy={serverBusy}
+        emitMockEvent={emitMockEvent}
+      />
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { Tv, Sun, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
 
-type StreamStatus = "DISCONNECTED" | "LOBBY" | "STREAMING"
+export type StreamStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
 
 interface AppLayoutProps {
   children: ReactNode
@@ -72,6 +72,8 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Jeśli zdecydujemy się na możliwość zmiany języka 
+            
             <Button
               variant="ghost"
               size="icon"
@@ -79,22 +81,19 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
               title="Zmień język / Change language"
             >
               <Globe className="w-4 h-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="w-8 h-8 text-slate-400 hover:bg-slate-800 hover:text-slate-100 transition-colors cursor-pointer"
-              title="Przełącz motyw"
-            >
-              <Sun className="w-4 h-4" />
-            </Button>
+            </Button> */}
 
             <div className="flex items-center gap-2 text-xs px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/60 ml-1">
               {status === "DISCONNECTED" && (
                 <>
                   <span className="w-2 h-2 rounded-full bg-slate-500" />
                   <span className="text-slate-400">Brak połączenia</span>
+                </>
+              )}
+              {status === "JOINING" && (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-amber-400">Łączenie...</span>
                 </>
               )}
               {status === "LOBBY" && (

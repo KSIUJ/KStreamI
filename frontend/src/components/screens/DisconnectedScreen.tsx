@@ -1,31 +1,36 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DevMockControls } from "@/components/dev/DevMockControls"
 
 interface DisconnectedScreenProps {
   pin: string
   setPin: (value: string) => void
   onConnect: () => void
+  errorMessage?: string | null
+  pinLength?: number
 }
 
-export function DisconnectedScreen({ pin, setPin, onConnect }: DisconnectedScreenProps) {
-  
-  // Formatowanie na wzór "123-456"
-  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // 1. Wyciągamy same cyfry (max 6)
-    const rawDigits = e.target.value.replace(/\D/g, "").slice(0, 6)
+export function DisconnectedScreen({ 
+  pin, 
+  setPin, 
+  onConnect,
+  errorMessage = null,
+  pinLength = 4 
+}: DisconnectedScreenProps) {
 
-    // 2. Jeśli wpisano więcej niż 3 cyfry, dodajemy myślnik bez spacji
-    if (rawDigits.length > 3) {
+  const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawDigits = e.target.value.replace(/\D/g, "").slice(0, pinLength)
+
+    if (pinLength === 6 && rawDigits.length > 3) {
       setPin(`${rawDigits.slice(0, 3)}-${rawDigits.slice(3)}`)
     } else {
       setPin(rawDigits)
     }
   }
 
-  // Weryfikacja obecności pełnych 6 cyfr
-  const isPinComplete = pin.replace(/\D/g, "").length === 6
+  const cleanPin = pin.replace(/\D/g, "")
+  const isPinComplete = cleanPin.length === pinLength
 
-  // Obsługa zatwierdzania Enterem
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (isPinComplete) {
@@ -42,15 +47,23 @@ export function DisconnectedScreen({ pin, setPin, onConnect }: DisconnectedScree
         </p>
       </div>
 
-      <div className="my-2">
+      <div className="my-1 flex flex-col gap-2">
         <Input
           type="text"
-          placeholder="000-000"
-          maxLength={7} // 6 cyfr + myślnik = 7 znaków
+          placeholder={pinLength === 4 ? "0000" : "000-000"}
+          maxLength={pinLength === 6 ? 7 : pinLength}
           value={pin}
           onChange={handlePinChange}
-          className="text-center text-2xl tracking-widest font-mono bg-slate-950 border-slate-700 text-emerald-400 h-14 uppercase"
+          className={`text-center text-2xl tracking-widest font-mono bg-slate-950 border text-emerald-400 h-14 uppercase transition-colors ${
+            errorMessage ? "border-red-500/80 focus:border-red-500" : "border-slate-700"
+          }`}
         />
+
+        {errorMessage && (
+          <p className="text-xs text-red-400 font-medium">
+            {errorMessage}
+          </p>
+        )}
       </div>
 
       <Button
@@ -60,6 +73,9 @@ export function DisconnectedScreen({ pin, setPin, onConnect }: DisconnectedScree
       >
         Połącz
       </Button>
+
+      {/* --- DEV NOTE: TYLKO INFORMACJA O KODZIE 1234 --- */}
+      <DevMockControls showPinErrorHintOnly={true} />
     </form>
   )
 }
