@@ -1,12 +1,41 @@
-import { Button } from "@/components/ui/button"
+import { useState } from "react"
+import { AppLayout } from "@/components/layout/AppLayout"
+import { DisconnectedScreen } from "@/components/screens/DisconnectedScreen"
+import { LobbyScreen } from "@/components/screens/LobbyScreen"
+import { StreamingScreen } from "@/components/screens/StreamingScreen"
 
-function App() {
+type StreamStatus = "DISCONNECTED" | "LOBBY" | "STREAMING"
+
+export default function App() {
+  const [status, setStatus] = useState<StreamStatus>("DISCONNECTED")
+  const [pin, setPin] = useState("")
+  const [serverBusy, setServerBusy] = useState(false)
+
+  const userId = "#676767"
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center gap-4">
-      <h1 className="text-3xl font-bold">Setup UI</h1>
-      <Button variant="default">Przycisk z shadcn</Button>
-    </div>
-  );
-}
+    <AppLayout status={status} userId={userId}>
+      {status === "DISCONNECTED" && (
+        <DisconnectedScreen
+          pin={pin}
+          setPin={setPin}
+          onConnect={() => setStatus("LOBBY")}
+        />
+      )}
 
-export default App
+      {status === "LOBBY" && (
+        <LobbyScreen
+          serverBusy={serverBusy}
+          setServerBusy={setServerBusy}
+          onStartStreaming={() => setStatus("STREAMING")}
+          onDisconnect={() => setStatus("DISCONNECTED")}
+        />
+      )}
+
+      {status === "STREAMING" && (
+        <StreamingScreen onStopStreaming={() => setStatus("LOBBY")} />
+      )}
+    
+    </AppLayout>
+  )
+}
