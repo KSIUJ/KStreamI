@@ -3,39 +3,46 @@ import { AppLayout } from "@/components/layout/AppLayout"
 import { DisconnectedScreen } from "@/components/screens/DisconnectedScreen"
 import { LobbyScreen } from "@/components/screens/LobbyScreen"
 import { StreamingScreen } from "@/components/screens/StreamingScreen"
-
-type StreamStatus = "DISCONNECTED" | "LOBBY" | "STREAMING"
+import { useCastingSocket } from "@/hooks/useCastingSocket"
 
 export default function App() {
-  const [status, setStatus] = useState<StreamStatus>("DISCONNECTED")
   const [pin, setPin] = useState("")
-  const [serverBusy, setServerBusy] = useState(false)
 
-  const userId = "#676767"
+  const {
+    status,
+    setStatus,
+    serverBusy,
+    clientId,
+    errorMessage,
+    joinRoom,
+    disconnect,
+    stopStreaming,
+    emitMockEvent,
+  } = useCastingSocket("localhost")
 
   return (
-    <AppLayout status={status} userId={userId}>
+    <AppLayout status={status} userId={clientId || "Brak ID"}>
       {status === "DISCONNECTED" && (
         <DisconnectedScreen
           pin={pin}
           setPin={setPin}
-          onConnect={() => setStatus("LOBBY")}
+          onConnect={() => joinRoom(pin)}
+          errorMessage={errorMessage}
         />
       )}
 
       {status === "LOBBY" && (
         <LobbyScreen
           serverBusy={serverBusy}
-          setServerBusy={setServerBusy}
+          emitMockEvent={emitMockEvent}
           onStartStreaming={() => setStatus("STREAMING")}
-          onDisconnect={() => setStatus("DISCONNECTED")}
+          onDisconnect={disconnect}
         />
       )}
 
       {status === "STREAMING" && (
-        <StreamingScreen onStopStreaming={() => setStatus("LOBBY")} />
+        <StreamingScreen onStopStreaming={stopStreaming} />
       )}
-    
     </AppLayout>
   )
 }
