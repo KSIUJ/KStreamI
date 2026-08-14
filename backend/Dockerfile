@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "-u", "cli.py", "start"]
+CMD ["python", "-u", "cli.py", "server", "start"]
