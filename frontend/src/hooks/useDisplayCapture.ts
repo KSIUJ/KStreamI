@@ -32,7 +32,7 @@ function getCaptureErrorMessage(error: unknown): string {
 
   switch (error.name) {
     case "NotAllowedError":
-      return "Udostępnianie ekranu zostało anulowane lub zablokowane."
+      return "Nie wybrano źródła do udostępnienia."
     case "NotReadableError":
       return "Nie można odczytać wybranego ekranu. Sprawdź uprawnienia systemowe."
 
@@ -74,6 +74,16 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
     }
 
     if (statusRef.current === "requesting") {
+      return null
+    }
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      const message =
+        "Udostępnianie ekranu wymaga połączenia HTTPS lub otwarcia strony przez localhost."
+
+      statusRef.current = "idle"
+      setError(message)
+      setStatus("idle")
       return null
     }
 
@@ -143,6 +153,16 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
     } catch (captureError) {
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         return null
+      }
+
+      if (
+        !(captureError instanceof DOMException) ||
+        captureError.name !== "NotAllowedError"
+      ) {
+        const errorName =
+          captureError instanceof Error ? captureError.name : "UnknownError"
+
+        console.error(`Display capture failed (${errorName}):`, captureError)
       }
 
       statusRef.current = "idle"

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 
-export type AppStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
+export type ConnectionStatus = "DISCONNECTED" | "JOINING" | "LOBBY"
 
 export function useCastingSocket(serverIp: string = "localhost") {
-  const [status, setStatus] = useState<AppStatus>("DISCONNECTED")
+  const [status, setStatus] = useState<ConnectionStatus>("DISCONNECTED")
   const [serverBusy, setServerBusy] = useState<boolean>(false)
   const [clientId, setClientId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -119,22 +119,13 @@ export function useCastingSocket(serverIp: string = "localhost") {
     setErrorMessage(null)
   }, [])
 
-  const stopStreaming = useCallback(() => {
-    const outboundMessage = { type: "STOP_CASTING", payload: {} }
-    console.log("SENDING WS EVENT:", outboundMessage)
-    wsRef.current?.send(JSON.stringify(outboundMessage))
-    setStatus("LOBBY")
-  }, [])
-
   return {
     status,
-    setStatus,
     serverBusy,
     clientId,
     errorMessage,
     joinRoom,
     disconnect,
-    stopStreaming,
     emitMockEvent,
   }
 }

@@ -1,39 +1,104 @@
-import { useEffect } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
 import { DevMockControls } from "@/components/dev/DevMockControls"
+import type { CaptureStatus } from "@/hooks/useDisplayCapture"
 
 interface LobbyScreenProps {
   serverBusy: boolean
   emitMockEvent: (eventObject: object) => void
-  onStartStreaming: () => void
+  captureStatus: CaptureStatus
+  captureError: string | null
+  onStartCapture: () => Promise<void>
+  onRetryCapture: () => Promise<void>
   onDisconnect: () => void
 }
 
 export function LobbyScreen({
   serverBusy,
   emitMockEvent,
-  onStartStreaming,
+  captureStatus,
+  captureError,
+  onStartCapture,
+  onRetryCapture,
   onDisconnect,
 }: LobbyScreenProps) {
+  const isRequestingCapture = captureStatus === "requesting"
+  const [hasRetriedCapture, setHasRetriedCapture] = useState(false)
+  const hasRetriedCaptureRef = useRef(false)
+
+  const startNewCapture = useCallback(() => {
+    hasRetriedCaptureRef.current = false
+    setHasRetriedCapture(false)
+    return onStartCapture()
+  }, [onStartCapture])
+
+  const retryCapture = useCallback(() => {
+    if (hasRetriedCaptureRef.current) return
+
+    hasRetriedCaptureRef.current = true
+    setHasRetriedCapture(true)
+    void onRetryCapture()
+  }, [onRetryCapture])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !serverBusy) {
+      const target = e.target
+      const isInteractiveElement =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("button, a, input, select, textarea") !== null)
+
+      if (isInteractiveElement) return
+
+      if (e.key === "Enter" && !serverBusy && !isRequestingCapture) {
         e.preventDefault()
-        onStartStreaming()
+        void startNewCapture()
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [serverBusy, onStartStreaming])
+  }, [isRequestingCapture, serverBusy, startNewCapture])
+
+  const renderCaptureHint = () => {
+    if (!isRequestingCapture) {
+      return (
+        <p className="text-xs text-slate-400">
+          Po kliknięciu pojawi się systemowe okno wyboru
+        </p>
+      )
+    }
+
+    if (hasRetriedCapture) {
+      return (
+        <p className="text-xs text-slate-400" role="status">
+          Jeśli wybór nadal nie działa, odśwież stronę (F5)
+        </p>
+      )
+    }
+
+    return (
+      <Button
+        type="button"
+        variant="link"
+        onClick={retryCapture}
+        className="h-auto p-0 text-xs text-slate-400 hover:text-slate-200"
+      >
+        Okno wyboru zniknęło? Spróbuj ponownie
+      </Button>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5 text-center">
       <div>
         <h2 className="text-xl font-semibold">Sala 102</h2>
-        <p className="text-sm text-slate-400 mt-1">Gotowy do udostępniania</p>
+        <p className="text-sm text-slate-400 mt-1">
+          {isRequestingCapture
+            ? "Wybierz ekran lub okno, które chcesz udostępnić"
+            : "Gotowy do udostępniania"}
+        </p>
       </div>
 
       <div
@@ -63,12 +128,22 @@ export function LobbyScreen({
       <div className="flex flex-col gap-2">
         <Button
           type="button"
-          disabled={serverBusy}
-          onClick={onStartStreaming}
+          disabled={serverBusy || isRequestingCapture}
+          onClick={() => void startNewCapture()}
           className="w-full h-12 text-base font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed transition-all"
         >
-          Rozpocznij udostępnianie
+          {isRequestingCapture
+            ? "Wybór w toku…"
+            : "Rozpocznij udostępnianie"}
         </Button>
+
+        {renderCaptureHint()}
+
+        {captureError && (
+          <p className="text-sm text-red-400" role="alert">
+            {captureError}
+          </p>
+        )}
 
         <Button
           type="button"
