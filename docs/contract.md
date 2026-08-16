@@ -8,12 +8,15 @@ This specification documents the data schemas, connection endpoints, and event s
 
 ### WebSocket Signaling Gateway
 * **URL:**
-  * Sender (casting client, e.g. a student's laptop): `ws://{server_ip}:8080/v1/sender`
-  * Receiver (classroom display): `ws://{server_ip}:8080/v1/receiver`
-* **Protocol:** WebSocket (`ws`) over local LAN
+  * Sender (casting client, e.g. a student's laptop): `wss://{server_ip}:8080/v1` — the default role; no path suffix needed, since most connections are senders.
+  * Receiver (classroom display): `wss://{server_ip}:8080/v1/receiver`
+* **Protocol:** WebSocket Secure (`wss`) over local LAN
 * **Data Format:** JSON
 * **Versioning:** URI Path Based (`/v1`, `/v2`)
 * **Role:** The connection's role (`sender` vs `receiver`) is fixed by which path it connects to and cannot change for the lifetime of that connection. This is why role has to be resolved at the URL level rather than by an initial message — `SERVER_HELLO` (§3.1.1), the very first message, already differs by role.
+* **Signaling only:** The server never terminates or inspects the WebRTC media session. `OFFER`/`ANSWER`/`ICE_CANDIDATE` payloads are forwarded byte-for-byte between the Sender and the Receiver browsers, which negotiate and hold the actual peer-to-peer connection directly with each other (§3.2, §5).
+* **Why `wss` and not `ws`:** the sender's page calls `navigator.mediaDevices.getDisplayMedia()` to capture the screen, which browsers only allow in a secure context (`https`, or `localhost`). A page served over plain `http` would have that call silently blocked. Once the sender's page is `https`, the browser's mixed-content policy forbids it from opening a plain `ws://` connection — so the signaling socket has to be `wss` too. Strictly, this only *forces* it for the sender path; the `receiver` never calls `getDisplayMedia()` and could stay on plain `ws`/`http`. Running both over `wss` is simpler to operate (one cert, one config) and is the default here; the asymmetric option is only worth it if minimizing the number of devices that have to click through a certificate warning matters more than that simplicity.
+* **Certificate:** there's no publicly-trusted certificate for a bare LAN IP. Expect a self-signed certificate, which means each device clicks through a one-time browser warning on first connect. If classroom machines are department-managed, installing that self-signed CA as trusted on them removes the warning there; student laptops connecting as senders will still see it once per device.
 
 > **API Versioning Strategy:**
 > Breaking schema changes trigger a major version bump (e.g., `/v2`). Clients remain pinned to their targeted version to guarantee backward compatibility.
@@ -48,12 +51,13 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
   - Trigger: Dispatched immediately upon opening a new WebSocket connection.
 
 ```json
-// Sent on a /v1/sender connection
+// Sent on a /v1 (sender) connection
 {
   "type": "SERVER_HELLO",
   "payload": {
     "clientId": "client-a1b2c3",
     "isBusy": false,
+    "receiverConnected": true,
     "joinCode": null
   }
 }
@@ -73,13 +77,16 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 
 | Field | Type | Constraints |
 |---|---|---|
-| `clientId` | string | Server-generated, unique per active connection. Format `client-` + 6 lowercase hex chars on a `sender` connection, `receiver-` + 6 lowercase hex chars on a `receiver` connection — the prefix makes role obvious in logs. |
-| `isBusy` | boolean | Current server-wide busy state at connection time. Sent to both roles. |
-| `joinCode` | string \| null | On a `receiver` connection: exactly 4 digits (`^[0-9]{4}$`), the code shown on the projector screen for this session. On a `sender` connection: always `null` — the sender never receives the code over the wire; the user reads it off the projector and types it in via `JOIN_REQUEST`. |
+| `clientId` | string | Server-generated, unique per active connection, prefixed with `client-` on a `sender` connection or `receiver-` on a `receiver` connection so role is obvious in logs. Assigned once when the connection opens and immutable for that connection's lifetime — it never changes while the WebSocket stays open, and a reconnect gets a new one. The suffix format itself (e.g. a UUID) is an implementation detail — clients must not parse it or rely on anything beyond uniqueness and the prefix. |
+| `isBusy` | boolean | Current server-wide busy state at connection time (`true` for `PENDING` or `ACTIVE` — see §4.3). Sent to both roles. |
+| `receiverConnected` | boolean | Sender-only. `true` if at least one `receiver` connection is currently open on the server, `false` otherwise — lets a sender's UI show upfront whether casting is even possible right now. |
+| `joinCode` | string \| null | On a `receiver` connection: exactly 4 digits (`^[0-9]{4}$`), the code shown on the projector screen for this session — see the persistence note below. On a `sender` connection: always `null` — the sender never receives the code over the wire; the user reads it off the projector and types it in via `JOIN_REQUEST`. |
+
+**`joinCode` persistence:** the code belongs to the server's current session, not to any single `receiver` connection. It's generated once — the first time a `receiver` connects while the server is completely empty — and stays alive for as long as at least one sender is `Joined` **or** at least one `receiver` is connected. A `receiver` reconnecting (e.g. after a projector page reload, or a brief network drop — §3.3.10) receives the *same* code back, so already-`Joined` senders never need to re-enter it or re-`JOIN_REQUEST`. The code is only regenerated once the server returns to a fully empty state (zero `Joined` senders, zero connected receivers).
 
 2. `JOIN_REQUEST`
-  - Direction: Client $\rightarrow$ Server (`sender` connections only)
-  - Trigger: Sent by client after the user enters the PIN code displayed on the projector screen.
+  - Direction: Sender $\rightarrow$ Server
+  - Trigger: Sent by the sender after the user enters the PIN code displayed on the projector screen.
 
 ```json
 {
@@ -96,18 +103,17 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 | `joinCode` | string | Exactly 4 digits (`^[0-9]{4}$`). |
 | `clientName` | string | 1–64 characters, trimmed, control characters stripped server-side before display. |
 
-Sent on a `receiver` connection: rejected with `ERROR` (`INVALID_STATE`) — a receiver never joins. Sent by a client that is already `Joined`: also rejected with `ERROR` (`INVALID_STATE`) — a client may only join once per connection.
+Sent on a `receiver` connection: rejected with `ERROR` (`INVALID_STATE`) — a receiver never joins. Sent by a sender that is already `Joined`: also rejected with `ERROR` (`INVALID_STATE`) — a sender may only join once per connection.
 
 3. `JOIN_RESPONSE`
-  - Direction: Server $\rightarrow$ Client (`sender` connections only)
+  - Direction: Server $\rightarrow$ Sender
   - Trigger: Server's response to a `JOIN_REQUEST`.
 
 ```json
 {
   "type": "JOIN_RESPONSE",
   "payload": {
-    "success": true,
-    "message": "Connected successfully."
+    "success": true
   }
 }
 ```
@@ -125,16 +131,19 @@ Sent on a `receiver` connection: rejected with `ERROR` (`INVALID_STATE`) — a r
 | Field | Type | Constraints |
 |---|---|---|
 | `success` | boolean | Required. |
-| `message` | string | Present only when `success: true`. Human-readable. |
-| `reason` | string enum | Present only when `success: false`. One of: `INVALID_CODE`. |
+| `reason` | string enum | Present only when `success: false`. One of: `INVALID_CODE`, `SERVER_FULL`. |
 
-A client that has not received a successful `JOIN_RESPONSE` is **not joined**, and any subsequent `OFFER`/`STOP_CASTING` from it is rejected with `ERROR` (`INVALID_STATE`, see §3.4) — treated as an out-of-order message, same as any other wrong-sequence case. On a successful join, the server also sends `CLIENT_LIST_UPDATE` (§3.3.11) to the `receiver` connection so the operator's client list stays current.
+`SERVER_FULL`: the server enforces a maximum number of concurrently `Joined` senders; returned when a `JOIN_REQUEST` with an otherwise-valid `joinCode` arrives after that cap has already been reached. The maximum number of concurrently `Joined` senders is a tunable server setting (e.g. 50) — this is not part of the protocol itself.
+
+A sender that has not received a successful `JOIN_RESPONSE` is **not joined**, and any subsequent `OFFER`/`STOP_CASTING` from it is rejected with `ERROR` (`INVALID_STATE`, see §3.4) — treated as an out-of-order message, same as any other wrong-sequence case. On a successful join, the server also sends `CLIENT_LIST_UPDATE` (§3.3.12) to the `receiver` connection so the operator's client list stays current.
 
 ### 3.2 WebRTC Signaling
 
+As of this revision the server relays this whole section between a Sender and the Receiver — it does not terminate WebRTC or hold its own `RTCPeerConnection`. `OFFER`, `ANSWER`, and `ICE_CANDIDATE` traffic flows Sender $\rightarrow$ Server $\rightarrow$ Receiver and Receiver $\rightarrow$ Server $\rightarrow$ Sender; the server only inspects `type`/routing, never the SDP or ICE content itself.
+
 4. `SELECT_CLIENT`
   - Direction: Receiver $\rightarrow$ Server
-  - Trigger: The operator picks a joined client from the Receiver UI's list (populated via `CLIENT_LIST_UPDATE`, §3.3.11) and starts casting for it.
+  - Trigger: The operator picks a joined sender from the Receiver UI's list (populated via `CLIENT_LIST_UPDATE`, §3.3.12) and starts casting for it.
 
 ```json
 {
@@ -147,18 +156,19 @@ A client that has not received a successful `JOIN_RESPONSE` is **not joined**, a
 
 | Field | Type | Constraints |
 |---|---|---|
-| `clientId` | string | Must reference a currently joined client. |
+| `clientId` | string | Must reference a currently joined sender. |
 
 Server handling:
-- If `clientId` does not reference a currently joined client (e.g. it just disconnected): `ERROR` (`INVALID_STATE`) to the receiver.
-- If the server is not currently `IDLE` (i.e. already `PENDING` or `BUSY`): `ERROR` (`BUSY`) to the receiver — a selection or a cast is already in flight.
-- Otherwise: server transitions `IDLE` → `PENDING`, records the referenced client as the *pending* client, sends `CAST_REQUEST` to it, and broadcasts `STATE_UPDATE` (§3.3.10).
+- If no `receiver` is currently connected on the server: `ERROR` (`NO_RECEIVER`) to the receiver — a defensive check, since in practice this message can only originate from a receiver connection.
+- If `clientId` does not reference a currently joined sender (e.g. it just disconnected): `ERROR` (`INVALID_STATE`) to the receiver.
+- If the server is not currently `IDLE` (i.e. already `PENDING` or `ACTIVE`): `ERROR` (`BUSY`) to the receiver — a selection or a cast is already in flight.
+- Otherwise: server transitions `IDLE` → `PENDING`, records the referenced sender as the *pending* client, sends `CAST_REQUEST` to it, and broadcasts `STATE_UPDATE` (§3.3.11).
 
 Sent on a `sender` connection: rejected with `ERROR` (`INVALID_STATE`).
 
 5. `CAST_REQUEST`
- - Direction: Server $\rightarrow$ Client
- - Trigger: Sent when the server accepts a `SELECT_CLIENT` message from the `receiver` connection and transitions `IDLE` → `PENDING` (§3.2.4), instructing the chosen client to begin casting.
+ - Direction: Server $\rightarrow$ Sender
+ - Trigger: Sent when the server accepts a `SELECT_CLIENT` message from the `receiver` connection and transitions `IDLE` → `PENDING` (§3.2.4), instructing the chosen sender to begin casting.
 
 ```json
 {
@@ -167,13 +177,14 @@ Sent on a `sender` connection: rejected with `ERROR` (`INVALID_STATE`).
 }
 ```
 
-The client reacts to `CAST_REQUEST` exactly as if the local user had clicked "Start Casting" — it proceeds to send an `OFFER`.
+The sender reacts to `CAST_REQUEST` exactly as if the local user had clicked "Start Casting" — it proceeds to send an `OFFER`.
 
 6. `OFFER`
- - Direction: Client $\rightarrow$ Server
- - Trigger: Client initiates WebRTC P2P stream negotiation after the user clicks "Start Casting", or automatically upon receiving `CAST_REQUEST`.
+ - Direction: Sender $\rightarrow$ Server $\rightarrow$ Receiver (relayed)
+ - Trigger: Sender initiates WebRTC P2P stream negotiation after the user clicks "Start Casting", or automatically upon receiving `CAST_REQUEST`.
 
 ```json
+// Sender -> Server
 {
   "type": "OFFER",
   "payload": {
@@ -182,36 +193,63 @@ The client reacts to `CAST_REQUEST` exactly as if the local user had clicked "St
 }
 ```
 
-| Field | Type | Constraints |
-|---|---|---|
-| `sdp` | string | Valid SDP offer body per RFC 8866. |
-
-**Server handling of concurrent `OFFER`s:** the server treats "who becomes active" atomically and serially — offers are processed in arrival order, against the server's own session state (`IDLE` / `PENDING` / `BUSY`, see §4.3).
-- If the server is `IDLE` when an `OFFER` arrives (no prior `SELECT_CLIENT`): the offering client becomes active, the server transitions straight to `BUSY`, replies with `ANSWER`, and broadcasts `STATE_UPDATE`.
-- If the server is `PENDING` and the `OFFER` comes from the pending `clientId`: the server transitions `PENDING` → `BUSY`, replies with `ANSWER`, and broadcasts `STATE_UPDATE` — this is the normal path after a `CAST_REQUEST`.
-- If the server is `PENDING` or `BUSY` and the `OFFER` comes from any *other* `clientId` (including a second `OFFER` arriving microseconds after the first, before that first client's `ANSWER`/`STATE_UPDATE` has gone out): the server does **not** send an `ANSWER`. It replies to the offending client only with `ERROR` (`BUSY`, see §3.4). No SDP negotiation is started for that client. This is what stops a spontaneous `OFFER` from a non-selected client from racing ahead of the one the operator explicitly picked via `SELECT_CLIENT`.
-- A joined client cannot have two outstanding offers at once; a second `OFFER` from the *same* `clientId` while it is itself the active caster is rejected the same way (`BUSY`) and does not restart negotiation.
-
-7. `ANSWER`
-- Direction: Server $\rightarrow$ Client
-- Trigger: Server response to an `OFFER` payload containing aiortc local SDP session details.
-
 ```json
+// Server -> Receiver (relayed, with the offering sender's clientId attached
+// so the receiver knows which peer to build an RTCPeerConnection for)
 {
-  "type": "ANSWER",
+  "type": "OFFER",
   "payload": {
-    "sdp": "v=0\r\no=- 89123456 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0..."
+    "sdp": "v=0\r\no=- 46112345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0...",
+    "clientId": "client-a1b2c3"
   }
 }
 ```
 
 | Field | Type | Constraints |
 |---|---|---|
-| `sdp` | string | Valid SDP answer body per RFC 8866. |
+| `sdp` | string | Valid SDP offer body per RFC 8866. Forwarded byte-for-byte by the server — it is never parsed or modified. |
+| `clientId` | string | Added by the server only on the Server → Receiver relay; identifies the offering sender. Not present on the original Sender → Server message (the sender is already identified by its own connection). |
+
+**Server handling of concurrent `OFFER`s:** the server treats "who becomes the negotiating pair" atomically and serially — offers are processed in arrival order, against the server's own session state (`IDLE` / `PENDING` / `ACTIVE`, see §4.3). The server itself never generates an `ANSWER`; it only decides whether to relay the offer on.
+- If the server is `IDLE` when an `OFFER` arrives (no prior `SELECT_CLIENT`) **and a `receiver` is currently connected**: the server transitions `IDLE` → `ACTIVE`, relays the `OFFER` to the receiver, and broadcasts `STATE_UPDATE`.
+- If the server is `IDLE` and **no `receiver` is currently connected**: the server replies to the offering sender with `ERROR` (`NO_RECEIVER`, see §3.4) — there's nothing to relay to.
+- If the server is `PENDING` and the `OFFER` comes from the pending `clientId`: the server transitions `PENDING` → `ACTIVE`, relays the `OFFER`, and broadcasts `STATE_UPDATE` — this is the normal path after a `CAST_REQUEST`.
+- If the server is `PENDING` or `ACTIVE` and the `OFFER` comes from any *other* `clientId` (including a second `OFFER` arriving microseconds after the first, before that first sender's negotiation has progressed): the server does **not** relay it. It replies to the offending sender only with `ERROR` (`BUSY`, see §3.4). This is what stops a spontaneous `OFFER` from a non-selected sender from racing ahead of the one the operator explicitly picked via `SELECT_CLIENT`.
+- A joined sender cannot have two outstanding offers at once; a second `OFFER` from the *same* `clientId` while it is itself the negotiating/active caster is rejected the same way (`BUSY`) and does not restart negotiation.
+
+7. `ANSWER`
+- Direction: Receiver $\rightarrow$ Server $\rightarrow$ Sender (relayed)
+- Trigger: The receiver's own WebRTC stack generates an SDP answer after receiving the relayed `OFFER` (§3.2.6); sent to the server, which forwards it to the sender that made the offer.
+
+```json
+// Receiver -> Server
+{
+  "type": "ANSWER",
+  "payload": {
+    "sdp": "v=0\r\no=- 89123456 2 IN IP4 192.168.1.30\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0..."
+  }
+}
+```
+
+```json
+// Server -> Sender (relayed, unchanged)
+{
+  "type": "ANSWER",
+  "payload": {
+    "sdp": "v=0\r\no=- 89123456 2 IN IP4 192.168.1.30\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0..."
+  }
+}
+```
+
+| Field | Type | Constraints |
+|---|---|---|
+| `sdp` | string | Valid SDP answer body per RFC 8866. Forwarded byte-for-byte — the server does not generate, parse, or modify it. |
+
+An `ANSWER` is only accepted from the `receiver` connection while the session is `ACTIVE`; otherwise `ERROR` (`INVALID_STATE`).
 
 8. `ICE_CANDIDATE`
- - Direction: Bidirectional (Client $\leftrightarrow$ Server)
- - Trigger: Exchange of ICE candidates for establishing direct LAN P2P UDP traversal.
+ - Direction: Bidirectional relay (Sender $\leftrightarrow$ Server $\leftrightarrow$ Receiver)
+ - Trigger: Each side's WebRTC stack discovers local ICE candidates and forwards them through the server to the other peer, for establishing the direct LAN P2P UDP path between the two browsers.
 
 ```json
 {
@@ -226,20 +264,36 @@ The client reacts to `CAST_REQUEST` exactly as if the local user had clicked "St
 
 | Field | Type | Constraints |
 |---|---|---|
-| `candidate` | string | Valid ICE candidate line per RFC 5245. |
-| `sdpMid` | string | Media stream identification tag. |
-| `sdpMLineIndex` | integer | `>= 0`. |
+| `candidate` | string | Valid ICE candidate line per RFC 5245. Forwarded verbatim. |
+| `sdpMid` | string | Optional. Media stream identification tag; omitted when the sender's WebRTC stack doesn't provide one for a given candidate (per RFC 8829, at least one of `sdpMid`/`sdpMLineIndex` must be present). |
+| `sdpMLineIndex` | integer | Optional. `>= 0` when present; same omission rule as `sdpMid`. |
 
-The `receiver` connection never participates in this exchange — WebRTC terminates at the server (via aiortc), so the receiver only ever sees signaling/status events, never SDP or ICE.
+The server relays every `ICE_CANDIDATE` it receives to the *other* party in the current negotiation, without inspecting it. Since at most one negotiation is ever in flight at a time (enforced by the `PENDING`/`ACTIVE` session state, §4.3), routing is unambiguous and no `clientId` is needed on this message. Accepted only while the session is `ACTIVE`; otherwise `ERROR` (`INVALID_STATE`).
+
+9. `PEER_CONNECTION_FAILED`
+  - Direction: Sender or Receiver $\rightarrow$ Server (either side of the current negotiation may report it)
+  - Trigger: The reporting side's `RTCPeerConnection` for the current negotiation enters state `"failed"` (or closes unexpectedly) — the direct P2P link could not be established, or was lost, even though the WebSocket signaling connection is still open.
+
+```json
+{
+  "type": "PEER_CONNECTION_FAILED",
+  "payload": {}
+}
+```
+
+Server handling: only valid while the session is `ACTIVE`. On receipt, the server transitions to `IDLE`, relays `STOP_CASTING` to the *other* party of the negotiation (so it also tears down its now-orphaned `RTCPeerConnection`), and broadcasts `STATE_UPDATE` (`isBusy: false` / `state: "IDLE"`, `activeClientId: null`). Sent while the session is `IDLE` or `PENDING`: `ERROR` (`INVALID_STATE`) — there's no active negotiation to fail.
+
+**Concurrent teardown:** a `PEER_CONNECTION_FAILED` and a `STOP_CASTING` (or two of either) can arrive from both sides within the same negotiation at nearly the same instant — e.g. the sender disconnects just as the receiver reports failure. The server resolves this the same way it resolves concurrent `OFFER`s (§3.2.6): messages are processed strictly in arrival order against the server's own state, atomically. Whichever message the server processes first tears the negotiation down and transitions the session to `IDLE`; whatever arrives after that — from either party — lands on an already-`IDLE` session and is simply rejected with `ERROR` (`INVALID_STATE`), same as any other out-of-order message. No special-casing is needed for the "both sides report it" case.
 
 ### 3.3 State Control and Synchronization
 
-9. `STOP_CASTING`
-- Direction: Bidirectional (Client/Receiver $\leftrightarrow$ Server)
+10. `STOP_CASTING`
+- Direction: Bidirectional (Sender/Receiver $\leftrightarrow$ Server)
 - Trigger:
-  - Client $\rightarrow$ Server: sent when the active (`BUSY`) client clicks "Stop Casting".
-  - Receiver $\rightarrow$ Server: sent when the operator clicks "Stop" in the Receiver UI, for either the active (`BUSY`) client or a still-`PENDING` selection — cancelling a pending selection before it ever offers is allowed too.
-  - Server $\rightarrow$ Client: sent to the active or pending client (as a result of either of the above, or of the pending timeout below) telling it to wind down its WebRTC session, or to abandon an `OFFER` it hasn't sent yet.
+  - Sender → Server: sent when the active (`ACTIVE`) sender clicks "Stop Casting" locally.
+  - Receiver → Server: sent when the operator clicks "Stop" in the Receiver UI, for a `PENDING` selection or an `ACTIVE` cast (whether still negotiating or already streaming) — cancelling before it ever offers, mid-negotiation, or once already streaming are all allowed.
+  - Server → Sender: relays a stop telling the sender to abandon an `OFFER` it hasn't sent yet (`PENDING`), or to tear down its `RTCPeerConnection` (`ACTIVE`) — as a result of either of the above, the pending timeout below, or a `PEER_CONNECTION_FAILED` reported by the receiver.
+  - Server → Receiver: relays a stop telling the receiver to tear down its `RTCPeerConnection` — when the *sender* stops, disconnects, or reports `PEER_CONNECTION_FAILED`.
 
 ```json
 {
@@ -248,47 +302,56 @@ The `receiver` connection never participates in this exchange — WebRTC termina
 }
 ```
 
-If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the server replies with `ERROR` (`INVALID_STATE`).
+If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the server replies with `ERROR` (`INVALID_STATE`) — including when this happens because a concurrent `PEER_CONNECTION_FAILED` or another `STOP_CASTING` already tore the session down first; see the concurrent-teardown note under `PEER_CONNECTION_FAILED` (§3.2.9).
 
-**Abrupt disconnect handling:** the server treats a closed/errored WebSocket from the active (`BUSY`) *or* pending (`PENDING`) client exactly like an implicit `STOP_CASTING`, even though no message was received:
-- The server tears down the WebRTC session (if any had started) for that client and transitions back to `IDLE`.
-- It broadcasts `STATE_UPDATE` (`isBusy: false`) to remaining `sender` connections, and `STATE_UPDATE` (`state: "IDLE"`, `activeClientId: null`) to the `receiver` connection.
-- Because the disconnected client is also no longer joined, the server additionally sends `CLIENT_LIST_UPDATE` to the `receiver` connection, dropping it from the roster.
-- This applies to *any* joined client dropping (not just the active or pending one) — a non-casting, non-pending client's disconnect triggers only `CLIENT_LIST_UPDATE` to the receiver (no `STATE_UPDATE`, since the session state didn't change).
+**Abrupt sender disconnect handling:** the server treats a closed/errored WebSocket from the negotiating/active (`PENDING`/`ACTIVE`) sender exactly like an implicit `STOP_CASTING`, even though no message was received:
+- The server transitions the session back to `IDLE`.
+- If the session had reached `ACTIVE` (the receiver had already built a real `RTCPeerConnection`): the server sends `STOP_CASTING` to the `receiver` so it tears it down. If the session was only `PENDING` (no `OFFER` sent yet), there's nothing on the receiver side to tear down.
+- It broadcasts `STATE_UPDATE` (`isBusy: false`) to remaining senders, and `STATE_UPDATE` (`state: "IDLE"`, `activeClientId: null`) to the `receiver` connection.
+- Because the disconnected sender is also no longer joined, the server additionally sends `CLIENT_LIST_UPDATE` to the `receiver` connection, dropping it from the roster.
+- This applies to *any* joined sender dropping (not just the negotiating or active one) — a non-casting, non-pending sender's disconnect triggers only `CLIENT_LIST_UPDATE` to the receiver (no `STATE_UPDATE`, since the session state didn't change).
 
-**Pending timeout:** if the pending client hasn't sent an `OFFER` within **5 seconds** of receiving `CAST_REQUEST` (exact value is a tunable server setting), the server auto-cancels the selection — the same effect as the receiver sending `STOP_CASTING` for it: `PENDING` → `IDLE`, `STOP_CASTING` sent to the (still-connected) pending client so it abandons any in-flight `OFFER` attempt, and `STATE_UPDATE` broadcast as above. The timeout is purely a safety net for an unresponsive client; a clean disconnect is handled immediately by the bullet above, without waiting it out.
+**Receiver disconnect handling:** the server treats a closed/errored WebSocket from the `receiver` connection as follows:
+- If the session was `PENDING` or `ACTIVE`: the server sends `STOP_CASTING` to the sender involved — telling it to abandon an unsent `OFFER` or tear down its `RTCPeerConnection` — and transitions the session to `IDLE`.
+- The server broadcasts `STATE_UPDATE` (`isBusy: false`, `receiverConnected: false`) to all sender connections.
+- Joined senders are **not** unjoined and the roster is untouched — there's no receiver connection to send `CLIENT_LIST_UPDATE` to in the meantime.
+- The `joinCode` is preserved (§3.1.1), so a reconnecting — or a new — receiver shows the same code, and already-`Joined` senders never need to re-`JOIN_REQUEST`.
+- When a `receiver` (re)connects afterward, it gets `SERVER_HELLO` with the preserved `joinCode`, then `CLIENT_LIST_UPDATE` with the (unchanged) roster; the server also sends the senders `STATE_UPDATE` (`receiverConnected: true`).
 
-10. `STATE_UPDATE`
+**Pending timeout:** if the pending sender hasn't sent an `OFFER` within **20 seconds** of receiving `CAST_REQUEST` (exact value is a tunable server setting), the server auto-cancels the selection — the same effect as the receiver sending `STOP_CASTING` for it: `PENDING` → `IDLE`, `STOP_CASTING` sent to the (still-connected) pending sender so it abandons any in-flight `OFFER` attempt, and `STATE_UPDATE` broadcast as above. The timeout is purely a safety net for an unresponsive sender; a clean disconnect is handled immediately by the bullet above, without waiting it out.
+
+11. `STATE_UPDATE`
 - Direction: Server $\rightarrow$ All Connected Clients (broadcast), with a payload shaped by the recipient's role
-- Trigger: Sent whenever the server's session state changes between `IDLE`, `PENDING`, and `BUSY` (§4.3) — including as a result of a `SELECT_CLIENT`, an `OFFER`, a `STOP_CASTING`, an abrupt disconnect, or a pending timeout.
+- Trigger: Sent whenever the server's session state changes between `IDLE`, `PENDING`, and `ACTIVE` (§4.3) — including as a result of a `SELECT_CLIENT`, an `OFFER`, a `PEER_CONNECTION_FAILED`, a `STOP_CASTING`, an abrupt sender disconnect, or a pending timeout — and whenever a `receiver` connects or disconnects (for the `receiverConnected` flag).
+
+Sender-facing broadcasts only go to currently `Joined` sender connections — a `sender` connection that hasn't joined yet (still `Connected`, per §4.1) gets its one-time snapshot from `SERVER_HELLO` but is not on the `STATE_UPDATE` broadcast list, since it isn't eligible to `OFFER` regardless of session state.
 
 ```json
-// Sent to sender connections — other senders only need to know whether
-// offering is currently possible, not who is casting or pending.
+// Sent to sender connections
 {
   "type": "STATE_UPDATE",
-  "payload": { "isBusy": true }
+  "payload": { "isBusy": true, "receiverConnected": true }
 }
 ```
 
 ```json
-// Sent to the receiver connection — the operator UI needs to distinguish
-// a pending selection from an actual active cast.
+// Sent to the receiver connection
 {
   "type": "STATE_UPDATE",
-  "payload": { "state": "PENDING", "activeClientId": "client-a1b2c3" }
+  "payload": { "state": "ACTIVE", "activeClientId": "client-a1b2c3" }
 }
 ```
 
 | Field | Type | Constraints |
 |---|---|---|
-| `isBusy` | boolean | Sender-only. `true` whenever the session is `PENDING` or `BUSY` (i.e. not `IDLE`) — senders don't need finer-grained detail, since all they care about is whether offering is currently possible. |
-| `state` | string enum | Receiver-only. One of `IDLE`, `PENDING`, `BUSY` (§4.3). |
-| `activeClientId` | string \| null | Receiver-only. The pending client's `clientId` when `state: "PENDING"`, the casting client's `clientId` when `state: "BUSY"`, `null` when `state: "IDLE"`. |
+| `isBusy` | boolean | Sender-only. `true` whenever the session is `PENDING` or `ACTIVE` (i.e. not `IDLE`) — senders don't need finer-grained detail, since all they care about is whether offering is currently possible. |
+| `receiverConnected` | boolean | Sender-only. Mirrors `SERVER_HELLO.receiverConnected` (§3.1.1); re-sent whenever a receiver connects or disconnects. |
+| `state` | string enum | Receiver-only. One of `IDLE`, `PENDING`, `ACTIVE` (§4.3). |
+| `activeClientId` | string \| null | Receiver-only. The pending/active sender's `clientId` when `state` is `PENDING` or `ACTIVE`; `null` when `state: "IDLE"`. |
 
-11. `CLIENT_LIST_UPDATE`
+12. `CLIENT_LIST_UPDATE`
 - Direction: Server $\rightarrow$ Receiver only
-- Trigger: Sent immediately after `SERVER_HELLO` on a new `receiver` connection (to sync the initial roster), and again whenever the roster of joined clients changes — a client successfully joins, or any joined client's WebSocket closes.
+- Trigger: Sent immediately after `SERVER_HELLO` on a new `receiver` connection (to sync the initial roster), and again whenever the roster of joined senders changes — a sender successfully joins, or any joined sender's WebSocket closes.
 
 ```json
 {
@@ -303,13 +366,13 @@ If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the ser
 
 | Field | Type | Constraints |
 |---|---|---|
-| `clients` | array | Every currently joined `sender` client, including the pending or active one if any (cross-reference `STATE_UPDATE.state` and `activeClientId` to know which one, if any, is pending or casting). |
+| `clients` | array | Every currently joined sender, including the pending or active one if any (cross-reference `STATE_UPDATE.state` and `activeClientId` to know which one, if any). |
 | `clients[].clientId` | string | See `SERVER_HELLO`. |
 | `clients[].clientName` | string | As supplied in `JOIN_REQUEST`. |
 
 ### 3.4 Errors
 
-12. `ERROR`
+13. `ERROR`
  - Direction: Server $\rightarrow$ Client
  - Trigger: Any malformed message, out-of-order message, role-mismatched message, or internal failure that the server cannot otherwise respond to with a normal event.
 
@@ -334,9 +397,9 @@ If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the ser
 |---|---|---|
 | `MALFORMED_ENVELOPE` | 400 Bad Request | Message isn't valid JSON, or the `type`/`payload` field is missing. |
 | `UNSUPPORTED_TYPE` | 400 Bad Request | Sent WebSocket `type` field is not recognized by the server. |
-| `INVALID_STATE` | 409 Conflict | Message sent out of the required order (e.g. `OFFER` before a successful `JOIN_REQUEST`, a `JOIN_REQUEST` from a client that's already `Joined`, `ICE_CANDIDATE` with no negotiation in progress), sent on a connection role that doesn't support it (e.g. `JOIN_REQUEST` on a `receiver` connection, `SELECT_CLIENT`/`STOP_CASTING` sent as if from a receiver on a `sender` connection), or a `SELECT_CLIENT`/`STOP_CASTING` that no longer matches reality (unknown `clientId`, or nothing to stop or cancel). |
-| `BUSY` | 409 Conflict | Another client is actively streaming to the display. Applies to `OFFER` and to `SELECT_CLIENT`. |
-| `SIGNALING_ERROR` | 500 Internal Error | Failed to parse WebRTC SDP or set up the ICE transport layer. |
+| `INVALID_STATE` | 409 Conflict | Message sent out of the required order (e.g. `OFFER` before a successful `JOIN_REQUEST`, a `JOIN_REQUEST` from a sender that's already `Joined`, `ANSWER`/`ICE_CANDIDATE` with no negotiation in progress, `PEER_CONNECTION_FAILED` with nothing to fail), sent on a connection role that doesn't support it (e.g. `JOIN_REQUEST` on a `receiver` connection, `SELECT_CLIENT`/`ANSWER` sent from a `sender` connection), or a `SELECT_CLIENT`/`STOP_CASTING` that no longer matches reality (unknown `clientId`, or nothing to stop or cancel). |
+| `BUSY` | 409 Conflict | Another sender is already the pending or active one. Applies to `OFFER` and to `SELECT_CLIENT`. |
+| `NO_RECEIVER` | 503 Service Unavailable | A spontaneous `OFFER` (or, less commonly, a `SELECT_CLIENT`) can't be relayed because no `receiver` connection is currently open. |
 
 Note: an invalid PIN is reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`), not via `ERROR` — it's a direct reply to `JOIN_REQUEST`, so it doesn't need a second, competing event type.
 
@@ -348,23 +411,27 @@ Note: an invalid PIN is reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`), n
 
 ```mermaid
   stateDiagram-v2
-    [*] --> Connected: WS opens (/v1/sender) / SERVER_HELLO
+    [*] --> Connected: WS opens (/v1) / SERVER_HELLO
 
     Connected --> Connected: JOIN_REQUEST -> JOIN_RESPONSE(success:false)
     Connected --> Joined: JOIN_REQUEST -> JOIN_RESPONSE(success:true)
     Connected --> [*]: WS closes (not joined)
 
     Joined --> Negotiating: OFFER (User clicks Start OR via CAST_REQUEST)
-    Joined --> Joined: OFFER (server not IDLE: PENDING or BUSY) -> ERROR(BUSY)
+    Joined --> Joined: OFFER (server not IDLE: PENDING or ACTIVE) -> ERROR(BUSY)
+    Joined --> Joined: OFFER (no receiver connected) -> ERROR(NO_RECEIVER)
 
-    Negotiating --> Casting: ANSWER + ICE_CANDIDATE exchange completes
+    Negotiating --> Casting: [local] ANSWER relayed + ICE_CANDIDATE exchange + local RTCPeerConnection reaches "connected"
+    Negotiating --> Joined: STOP_CASTING (relayed after a PEER_CONNECTION_FAILED, receiver cancels, or timeout)
     Negotiating --> [*]: WS closes (negotiation aborted)
 
-    Casting --> Joined: STOP_CASTING (from this client, or relayed after Receiver-forced stop)
+    Casting --> Joined: STOP_CASTING (from this client, relayed receiver-forced stop, or relayed PEER_CONNECTION_FAILED)
     Casting --> [*]: WS closes (implicit STOP_CASTING)
 
     Joined --> [*]: WS closes
 ```
+
+The `Negotiating → Casting` transition is observed **locally** by the sender's own client from its `RTCPeerConnection` state — it is not driven or confirmed by any server message (the server no longer emits a "connected" confirmation; see §4.3). The server's own session state doesn't distinguish `Negotiating` from `Casting` either — both map to `ACTIVE` (§4.3).
 
 ### 4.2 Receiver connection
 
@@ -373,44 +440,49 @@ Note: an invalid PIN is reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`), n
     [*] --> Ready: WS opens (/v1/receiver) / SERVER_HELLO(joinCode) -> CLIENT_LIST_UPDATE
 
     Ready --> Ready: CLIENT_LIST_UPDATE (roster changes)
-    Ready --> Ready: STATE_UPDATE (isBusy / activeClientId changes)
+    Ready --> Ready: STATE_UPDATE (state / activeClientId changes)
     Ready --> Ready: SELECT_CLIENT -> CAST_REQUEST sent, session becomes PENDING
     Ready --> Ready: SELECT_CLIENT (unknown client or session not IDLE) -> ERROR
-    Ready --> Ready: STOP_CASTING (cancels a PENDING selection, or stops the BUSY client)
+    Ready --> Ready: OFFER relayed in -> local negotiation -> ANSWER out, ICE_CANDIDATE exchange, RTCPeerConnection becomes "connected"
+    Ready --> Ready: PEER_CONNECTION_FAILED (its own negotiation failed) -> session returns to IDLE
+    Ready --> Ready: STOP_CASTING out (cancels a PENDING selection, or stops an ACTIVE sender)
+    Ready --> Ready: STOP_CASTING in (relayed after the sender stops/disconnects/fails) -> tears down its RTCPeerConnection
     Ready --> Ready: STOP_CASTING (session IDLE) -> ERROR(INVALID_STATE)
 
     Ready --> [*]: WS closes
 ```
 
-The `receiver` connection has no `Joined`/`Negotiating`/`Casting` states of its own — it stays `Ready` for its whole lifetime, observing and steering the session via the events above.
+The `receiver` connection has no `Joined`/`Negotiating`/`Casting` states of its own — it stays `Ready` for its whole lifetime, observing and steering the session via the events above (though it does hold a real `RTCPeerConnection` object once a negotiation starts — see §3.2).
 
 ### 4.3 Session state (server-wide)
 
-This is the server's own internal state — not tied to any single connection — that both `STATE_UPDATE` payloads (§3.3.10) reflect.
+This is the server's own internal state — not tied to any single connection — that both `STATE_UPDATE` payloads (§3.3.11) reflect. `ACTIVE` covers both "still negotiating" and "already streaming": from the server's point of view the two look identical (relay `ICE_CANDIDATE`, reject other `OFFER`s with `BUSY`, drop back to `IDLE` on `STOP_CASTING` or `PEER_CONNECTION_FAILED`), so there's no separate state for it — a receiver that wants to show "connecting…" vs "casting" in its UI can tell the difference locally from its own `RTCPeerConnection`, without the server needing to track it.
 
 ```mermaid
   stateDiagram-v2
     [*] --> IDLE
 
     IDLE --> PENDING: SELECT_CLIENT accepted -> CAST_REQUEST sent
-    IDLE --> BUSY: spontaneous OFFER accepted -> ANSWER
+    IDLE --> ACTIVE: spontaneous OFFER accepted -> relayed to receiver
+    IDLE --> IDLE: spontaneous OFFER, no receiver connected -> ERROR(NO_RECEIVER)
 
-    PENDING --> BUSY: OFFER from the pending client -> ANSWER
-    PENDING --> IDLE: timeout / pending client disconnects / receiver cancels (STOP_CASTING)
-    PENDING --> PENDING: OFFER from a different client -> ERROR(BUSY)
+    PENDING --> ACTIVE: OFFER from the pending sender -> relayed to receiver
+    PENDING --> IDLE: timeout (20s) / pending sender disconnects / receiver cancels (STOP_CASTING) / receiver disconnects
+    PENDING --> PENDING: OFFER from a different sender -> ERROR(BUSY)
 
-    BUSY --> IDLE: STOP_CASTING (from active client or receiver) / active client disconnects
-    BUSY --> BUSY: OFFER from a different client -> ERROR(BUSY)
+    ACTIVE --> IDLE: STOP_CASTING (from sender or receiver) / PEER_CONNECTION_FAILED (from either side) / active sender disconnects / receiver disconnects
+    ACTIVE --> ACTIVE: OFFER from a different sender -> ERROR(BUSY)
 ```
 
 ## 5. Media Stream Specification
 * **Video Codec:** H.264 / VP8
 * **Audio Codec:** Opus (optional)
 * **Target Resolution & Frame Rate:** 1080p @ 30 FPS
+* **Path:** Negotiated and carried directly between the Sender's and Receiver's browsers over the LAN (§3.2) — the server never decodes, re-encodes, or otherwise touches the media stream, only the signaling that sets it up.
 
 ## 6. Example Session Flow
 
-A full session, end to end, for one classroom (one `receiver`, two candidate `sender`s — Anna and Bartek):
+A full session, end to end, for one classroom (one `receiver`, two candidate senders — Anna and Bartek):
 
 1. **Receiver connects.**
    `receiver → server`: WS open on `/v1/receiver`.
@@ -418,8 +490,8 @@ A full session, end to end, for one classroom (one `receiver`, two candidate `se
    `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: []`).
 
 2. **Anna connects and joins.**
-   `sender(Anna) → server`: WS open on `/v1/sender`.
-   `server → sender(Anna)`: `SERVER_HELLO` (`joinCode: null`, `isBusy: false`).
+   `sender(Anna) → server`: WS open on `/v1`.
+   `server → sender(Anna)`: `SERVER_HELLO` (`joinCode: null`, `isBusy: false`, `receiverConnected: true`).
    `sender(Anna) → server`: `JOIN_REQUEST` (`joinCode: "7392"`, `clientName: "Anna's Laptop"`).
    `server → sender(Anna)`: `JOIN_RESPONSE` (`success: true`).
    `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: [Anna]`).
@@ -429,32 +501,44 @@ A full session, end to end, for one classroom (one `receiver`, two candidate `se
 
 4. **Operator picks Anna from the Receiver UI.**
    `receiver → server`: `SELECT_CLIENT` (`clientId: Anna`).
-   Server `IDLE → PENDING` (Anna is now the pending client — this reserves the slot for her).
+   Server `IDLE → PENDING`.
    `server → sender(Anna)`: `CAST_REQUEST`.
    `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: true`) — Bartek can't offer during the pending window either.
    `server → receiver`: `STATE_UPDATE` (`state: "PENDING"`, `activeClientId: Anna`).
-   *(If Bartek sends an `OFFER` any time in this window: `server → sender(Bartek)`: `ERROR(BUSY)` — this is exactly the race that `PENDING` closes.)*
+   *(If Bartek sends an `OFFER` any time in this window: `server → sender(Bartek)`: `ERROR(BUSY)`.)*
 
-   *(Variant — nobody offers: if Anna's device never sends `OFFER` within 5s, or the operator clicks Stop before it does, the server cancels: `PENDING → IDLE`, `server → sender(Anna)`: `STOP_CASTING`, and `STATE_UPDATE` broadcasts `isBusy: false` / `state: "IDLE"` as in step 7 below. No `ANSWER`/`ICE_CANDIDATE` ever happens.)*
+   *(Variant — nobody offers: if Anna's device never sends `OFFER` within 20s, or the operator clicks Stop before it does, the server cancels: `PENDING → IDLE`, `server → sender(Anna)`: `STOP_CASTING`, and `STATE_UPDATE` broadcasts as in step 7. No `OFFER` is ever relayed.)*
 
-5. **WebRTC negotiation.**
-   `sender(Anna) → server`: `OFFER`.
-   Server `PENDING → BUSY` (the offer matches the pending `clientId`).
-   `server → sender(Anna)`: `ANSWER`.
-   `server → receiver`: `STATE_UPDATE` (`state: "BUSY"`, `activeClientId: Anna`).
-   `sender(Anna) ↔ server`: `ICE_CANDIDATE` exchange until connected.
+5. **Anna's device offers; the server relays it to the receiver.**
+   `sender(Anna) → server`: `OFFER` (`sdp: ...`).
+   Server `PENDING → ACTIVE`.
+   `server → receiver`: `OFFER` (`sdp: ...`, `clientId: Anna`).
+   `server → receiver`: `STATE_UPDATE` (`state: "ACTIVE"`, `activeClientId: Anna`) — senders' `isBusy` was already `true`, so no change there.
 
-6. **Anna is casting.** Video flows over the established WebRTC session; the server (aiortc) renders it to the projector.
+6. **Receiver answers; ICE candidates flow both ways; the P2P link comes up.**
+   `receiver → server`: `ANSWER` (`sdp: ...`).
+   `server → sender(Anna)`: `ANSWER` (`sdp: ...`).
+   `sender(Anna) ↔ server ↔ receiver`: several `ICE_CANDIDATE` messages, relayed in both directions.
+   Once ICE completes, Anna's laptop and the projector's browser are streaming directly to each other — the server has no further visibility into this and stays in `ACTIVE`.
 
-7. **End of cast — three possible triggers:**
-   - *Anna stops herself:* `sender(Anna) → server`: `STOP_CASTING`.
-   - *Operator forces a stop:* `receiver → server`: `STOP_CASTING` → `server → sender(Anna)`: `STOP_CASTING`.
-   - *Anna's connection drops abruptly:* server detects the closed WS and treats it as an implicit `STOP_CASTING`.
+   *(Variant — negotiation fails: if either side reports `PEER_CONNECTION_FAILED` instead, the server returns `ACTIVE → IDLE`, relays `STOP_CASTING` to the other party, and broadcasts `STATE_UPDATE` as in step 7.)*
 
-   In every case: server `BUSY → IDLE`, then
+7. **Anna stops casting.**
+   `sender(Anna) → server`: `STOP_CASTING`.
+   Server `ACTIVE → IDLE`.
+   `server → receiver`: `STOP_CASTING` (tears down the receiver's `RTCPeerConnection`).
    `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: false`).
    `server → receiver`: `STATE_UPDATE` (`state: "IDLE"`, `activeClientId: null`).
-   *(Only for the abrupt-drop case, since Anna is also no longer joined:)* `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: [Bartek]`).
 
-8. **Bartek disconnects without ever casting.**
-   `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: []`). No `STATE_UPDATE` — `isBusy` never changed.
+8. **The receiver drops mid-session** (e.g. the projector's browser tab reloads), while Anna happens to be `ACTIVE` (already streaming):
+   `receiver` WebSocket closes.
+   `server → sender(Anna)`: `STOP_CASTING` (tears down her `RTCPeerConnection`).
+   Server `ACTIVE → IDLE`.
+   `server → sender(Anna)` and `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: false`, `receiverConnected: false`).
+   Anna and Bartek both remain `Joined` — no `JOIN_REQUEST` needed again.
+
+9. **The receiver reconnects.**
+   `receiver → server`: WS open on `/v1/receiver`.
+   `server → receiver`: `SERVER_HELLO` (`joinCode: "7392"` — same code as before, `isBusy: false`).
+   `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: [Anna, Bartek]` — roster untouched).
+   `server → sender(Anna)` and `server → sender(Bartek)`: `STATE_UPDATE` (`receiverConnected: true`).
