@@ -73,7 +73,7 @@ export function LobbyScreen({
     if (hasRetriedCapture) {
       return (
         <p className="text-xs text-slate-400" role="status">
-          Jeśli wybór nadal nie działa, odśwież stronę (F5)
+          Jeśli wybór nadal nie działa, rozłącz się i dołącz ponownie
         </p>
       )
     }

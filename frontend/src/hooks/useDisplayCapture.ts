@@ -5,7 +5,6 @@ export type CaptureStatus = "idle" | "requesting" | "capturing"
 export interface UseDisplayCaptureResult {
   stream: MediaStream | null
   status: CaptureStatus
-  settings: MediaTrackSettings | null
   error: string | null
   startCapture: () => Promise<MediaStream | null>
   stopCapture: () => void
@@ -44,7 +43,6 @@ function getCaptureErrorMessage(error: unknown): string {
 export function useDisplayCapture(): UseDisplayCaptureResult {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [status, setStatus] = useState<CaptureStatus>("idle")
-  const [settings, setSettings] = useState<MediaTrackSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const streamRef = useRef<MediaStream | null>(null)
@@ -62,7 +60,6 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
 
     if (mountedRef.current) {
       setStream(null)
-      setSettings(null)
       setError(null)
       setStatus("idle")
     }
@@ -135,7 +132,6 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
 
           if (mountedRef.current) {
             setStream(null)
-            setSettings(null)
             setError(null)
             setStatus("idle")
           }
@@ -146,7 +142,6 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
       streamRef.current = captureStream
       statusRef.current = "capturing"
       setStream(captureStream)
-      setSettings(videoTrack.getSettings())
       setStatus("capturing")
 
       return captureStream
@@ -187,7 +182,6 @@ export function useDisplayCapture(): UseDisplayCaptureResult {
   return {
     stream,
     status,
-    settings,
     error,
     startCapture,
     stopCapture,

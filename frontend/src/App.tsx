@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { AppLayout, type StreamStatus } from "@/components/layout/AppLayout"
+import { AppLayout, type ViewStatus } from "@/components/layout/AppLayout"
 import { DisconnectedScreen } from "@/components/screens/DisconnectedScreen"
 import { LobbyScreen } from "@/components/screens/LobbyScreen"
 import { StreamingScreen } from "@/components/screens/StreamingScreen"
@@ -15,7 +15,7 @@ import {
 function getViewStatus(
   connectionStatus: ConnectionStatus,
   captureStatus: CaptureStatus,
-): StreamStatus {
+): ViewStatus {
   if (connectionStatus !== "LOBBY") {
     return connectionStatus
   }

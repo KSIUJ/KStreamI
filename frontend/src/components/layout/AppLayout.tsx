@@ -3,11 +3,11 @@ import { Tv, Sun, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
 
-export type StreamStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
+export type ViewStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
 
 interface AppLayoutProps {
   children: ReactNode
-  status: StreamStatus
+  status: ViewStatus
   userId: string
 }
 
