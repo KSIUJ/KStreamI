@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
 import { DevMockControls } from "@/components/dev/DevMockControls"
@@ -40,26 +40,6 @@ export function LobbyScreen({
     setHasRetriedCapture(true)
     void onRetryCapture()
   }, [onRetryCapture])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target
-      const isInteractiveElement =
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target.closest("button, a, input, select, textarea") !== null)
-
-      if (isInteractiveElement) return
-
-      if (e.key === "Enter" && !serverBusy && !isRequestingCapture) {
-        e.preventDefault()
-        void startNewCapture()
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isRequestingCapture, serverBusy, startNewCapture])
 
   const renderCaptureHint = () => {
     if (!isRequestingCapture) {
