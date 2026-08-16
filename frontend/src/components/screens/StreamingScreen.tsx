@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
+import { useCaptureStats } from "@/hooks/useCaptureStats"
 import { MonitorPlay, StopCircle } from "lucide-react"
 
 interface StreamingScreenProps {
@@ -26,6 +27,16 @@ export function StreamingScreen({
     }
   }, [stream])
 
+  const captureStats = useCaptureStats(videoRef, stream)
+  const resolution =
+    captureStats.width !== null && captureStats.height !== null
+      ? `${captureStats.width} × ${captureStats.height}`
+      : "-"
+  const framesPerSecond =
+    captureStats.framesPerSecond !== null
+      ? captureStats.framesPerSecond.toFixed(0)
+      : "-"
+
   return (
     <div className="flex flex-col gap-6 text-center py-2">
       <div className="flex flex-col items-center justify-center gap-3">
@@ -42,15 +53,20 @@ export function StreamingScreen({
         </div>
       </div>
 
-      <div className="aspect-video overflow-hidden rounded-xl border border-slate-700 bg-black shadow-lg">
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          aria-label="Lokalny podgląd przechwytywanego ekranu"
-          className="h-full w-full object-contain"
-        />
+      <div className="flex flex-col gap-1">
+        <div className="aspect-video overflow-hidden rounded-xl border border-slate-700 bg-black shadow-lg">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            aria-label="Lokalny podgląd przechwytywanego ekranu"
+            className="h-full w-full object-contain"
+          />
+        </div>
+        <p className="text-right font-mono text-xs text-slate-500">
+          {resolution} · {framesPerSecond} FPS
+        </p>
       </div>
 
       <Button
