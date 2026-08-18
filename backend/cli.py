@@ -52,7 +52,7 @@ def server_menu():
         elif wybor in ["3", "maintenance"]:
             print(f"\n  {BLUE}Przełączanie trybu przerwy technicznej...{RESET}")
             input(f"  {DIM}Naciśnij Enter, aby kontynuować...{RESET}")
-        elif wybor in ["w", "back", "b", ""]:
+        elif wybor in ["w", "back", "b"]:
             break 
         else:
             print(f"  {RED}[!] Nieznana opcja.{RESET}")
@@ -90,7 +90,7 @@ def list_students():
         elif inp.isdigit():
             print(f"  {RED}[!] Niepoprawny numer na liście.{RESET}")
             input(f"  {DIM}Naciśnij Enter...{RESET}")
-        elif inp in ["o", "refresh", "r"]:
+        elif inp in ["o", "refresh", "r", ""]:
             continue
         elif inp in ["w", "back", "b"]:
             break
@@ -115,24 +115,25 @@ def main():
         print(f"   ╰───────────────────────────────────────────╯\n")
         print(f"   Stan systemu: {BOLD}{get_server_status()}{RESET} \n")
 
-        print(f"     {BOLD}[Lista]{RESET} Lista uczestników / Wybór prelegenta")
-        print(f"     {BOLD}[Stop]{RESET} Zakończ aktualną prezentację ekranu")
-        print(f"     {BOLD}[Tech]{RESET} Tryb techniczny (Zaawansowane)")
-        print(f"     {BOLD}[Exit]{RESET} Wyjście z programu")
-        print(f"     {BOLD}[Refresh]{RESET} Odśwież panel\n")
+        print(f"     {BOLD}[L]ista  {RESET} Lista uczestników / Wybór prelegenta")
+        print(f"     {BOLD}[S]top   {RESET} Zakończ aktualną prezentację ekranu")
+        print(f"     {BOLD}[T]ech   {RESET} Tryb techniczny (Zaawansowane)")
+        print(f"     {BOLD}[E]xit   {RESET} Wyjście z programu")
+        print(f"     {BOLD}[R]efresh{RESET} Odśwież panel\n")
 
         wybor = input(f"  Wybierz opcję › ").strip().lower()
 
-        if wybor in ["t", "server"]:
-            server_menu() 
-        elif wybor in ["l", "list"]:
+
+        if wybor in ["l", "lista", "list"]:
             list_students()
-        elif wybor in ["z", "stop", "s"]:
+        elif wybor in ["t", "tech", "server"]:
+            server_menu() 
+        elif wybor in ["stop", "s"]:
             print(f"\n  {RED}✓ Zakończono transmisję. Ekran sali jest wolny.{RESET}")
             input(f"  {DIM}Naciśnij Enter...{RESET}")
-        elif wybor in ["w", "exit", "quit", "q", "e"]:
+        elif wybor in ["w", "quit", "q", "e", "x", "exit"]:
             break
-        elif wybor in ["r", "refresh"]:
+        elif wybor in ["r", "refresh", ""]:
             continue
         else:
             print(f"  {RED}[!] Nieznana komenda.{RESET}")
