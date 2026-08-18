@@ -55,6 +55,13 @@ To stop and remove the containers, run:
 docker compose down
 ```
 
+##  Testing
+
+This project uses **Vitest** and **React Testing Library**.
+To run tests in /frontend:
+1. `npm install`
+2. `npm run test`
+
 ## Project structure
 _TBD_
 <!-- TODO: fill in as the repo takes shape -->
