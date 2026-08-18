@@ -1,4 +1,3 @@
-import { useCallback, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
 import { DevMockControls } from "@/components/dev/DevMockControls"
@@ -10,7 +9,6 @@ interface LobbyScreenProps {
   captureStatus: CaptureStatus
   captureError: string | null
   onStartCapture: () => Promise<void>
-  onRetryCapture: () => Promise<void>
   onDisconnect: () => void
 }
 
@@ -20,53 +18,17 @@ export function LobbyScreen({
   captureStatus,
   captureError,
   onStartCapture,
-  onRetryCapture,
   onDisconnect,
 }: LobbyScreenProps) {
   const isRequestingCapture = captureStatus === "requesting"
-  const [hasRetriedCapture, setHasRetriedCapture] = useState(false)
-  const hasRetriedCaptureRef = useRef(false)
-
-  const startNewCapture = useCallback(() => {
-    hasRetriedCaptureRef.current = false
-    setHasRetriedCapture(false)
-    return onStartCapture()
-  }, [onStartCapture])
-
-  const retryCapture = useCallback(() => {
-    if (hasRetriedCaptureRef.current) return
-
-    hasRetriedCaptureRef.current = true
-    setHasRetriedCapture(true)
-    void onRetryCapture()
-  }, [onRetryCapture])
 
   const renderCaptureHint = () => {
-    if (!isRequestingCapture) {
-      return (
-        <p className="text-xs text-slate-400">
-          Po kliknięciu pojawi się systemowe okno wyboru
-        </p>
-      )
-    }
-
-    if (hasRetriedCapture) {
-      return (
-        <p className="text-xs text-slate-400" role="status">
-          Jeśli wybór nadal nie działa, rozłącz się i dołącz ponownie
-        </p>
-      )
-    }
+    if (isRequestingCapture) return null
 
     return (
-      <Button
-        type="button"
-        variant="link"
-        onClick={retryCapture}
-        className="h-auto p-0 text-xs text-slate-400 hover:text-slate-200"
-      >
-        Okno wyboru zniknęło? Spróbuj ponownie
-      </Button>
+      <p className="text-xs text-slate-400">
+        Po kliknięciu pojawi się systemowe okno wyboru
+      </p>
     )
   }
 
@@ -109,7 +71,7 @@ export function LobbyScreen({
         <Button
           type="button"
           disabled={serverBusy || isRequestingCapture}
-          onClick={() => void startNewCapture()}
+          onClick={() => void onStartCapture()}
           className="w-full h-12 text-base font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed transition-all"
         >
           {isRequestingCapture

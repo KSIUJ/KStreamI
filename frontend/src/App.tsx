@@ -52,11 +52,6 @@ export default function App() {
     await startCapture()
   }, [startCapture])
 
-  const handleRetryCapture = useCallback(async () => {
-    stopCapture()
-    await handleStartCapture()
-  }, [handleStartCapture, stopCapture])
-
   useEffect(() => {
     if (connectionStatus !== "LOBBY") {
       stopCapture()
@@ -83,7 +78,6 @@ export default function App() {
           captureStatus={captureStatus}
           captureError={captureError}
           onStartCapture={handleStartCapture}
-          onRetryCapture={handleRetryCapture}
           onDisconnect={disconnect}
         />
       )}
