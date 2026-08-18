@@ -9,4 +9,9 @@ export default defineConfig({
     tailwindcss(),
     tsconfigPaths(),
   ],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+  }
 });
