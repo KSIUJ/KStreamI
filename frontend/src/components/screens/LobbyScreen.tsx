@@ -90,8 +90,9 @@ export function LobbyScreen({
         <Button
           type="button"
           variant="ghost"
+          disabled={isRequestingCapture}
           onClick={onDisconnect}
-          className="w-full bg-slate-800 text-slate-300 font-normal border border-slate-700/50 hover:bg-slate-700 hover:text-slate-100 transition-all cursor-pointer"
+          className="w-full bg-slate-800 text-slate-300 font-normal border border-slate-700/50 hover:bg-slate-700 hover:text-slate-100 disabled:opacity-50 transition-all cursor-pointer disabled:cursor-not-allowed"
         >
           Rozłącz
         </Button>
