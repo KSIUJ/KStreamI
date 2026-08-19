@@ -22,16 +22,6 @@ export function LobbyScreen({
 }: LobbyScreenProps) {
   const isRequestingCapture = captureStatus === "requesting"
 
-  const renderCaptureHint = () => {
-    if (isRequestingCapture) return null
-
-    return (
-      <p className="text-xs text-slate-400">
-        Po kliknięciu pojawi się systemowe okno wyboru
-      </p>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-5 text-center">
       <div>
@@ -78,8 +68,6 @@ export function LobbyScreen({
             ? "Wybór w toku…"
             : "Rozpocznij udostępnianie"}
         </Button>
-
-        {renderCaptureHint()}
 
         {captureError && (
           <p className="text-sm text-red-400" role="alert">

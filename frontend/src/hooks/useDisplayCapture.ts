@@ -31,7 +31,7 @@ function getCaptureErrorMessage(error: unknown): string {
 
   switch (error.name) {
     case "NotAllowedError":
-      return "Nie wybrano źródła do udostępnienia."
+      return "Nie udostępniono ekranu. Jeśli okno wyboru się nie pojawiło, sprawdź uprawnienia strony."
     case "NotReadableError":
       return "Nie można odczytać wybranego ekranu. Sprawdź uprawnienia systemowe."
 
