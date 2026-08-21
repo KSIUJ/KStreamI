@@ -1,19 +1,28 @@
 import { useState, useRef } from "react"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { Button } from "@/components/ui/button"
+import { useReceiverSocket } from "@/hooks/useReceiverSocket"
 
 export function ReceiverApp() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   
-  // MOCK DATA
-  const pin = "7392"
-  const connectedStudents = [
-    { id: '1', name: 'Macbook - Anna' },
-    { id: '2', name: 'Dell - Bartek' }
-  ]
-  
-  const [status, setStatus] = useState<"LOBBY" | "STREAMING">("LOBBY")
-  const [activeStudent, setActiveStudent] = useState<string | null>(null)
+  // 1. Używamy naszego nowego hooka połączonego z Pythonem!
+  const { 
+    pin, 
+    connectedStudents, 
+    serverState, 
+    activeClientId, 
+    requestStreamFromClient, 
+    stopCasting 
+  } = useReceiverSocket("localhost")
+
+  // Zamiast własnego stanu, opieramy się na tym, co mówi serwer.
+  // Jeśli serwer jest "ACTIVE" (lub "PENDING" w trakcie łączenia), traktujemy to jako streaming.
+  const isStreaming = serverState !== "IDLE"
+
+  // Szukamy imienia aktualnie udostępniającego studenta (żeby wyświetlić w interfejsie)
+  const activeStudentObj = connectedStudents.find(s => s.clientId === activeClientId)
+  const activeStudentName = activeStudentObj ? activeStudentObj.clientName : "Nieznany"
 
   // --- STANY DO PRZESUWANIA PASKA ---
   const [barPos, setBarPos] = useState({ x: 0, y: 0 })
@@ -40,14 +49,14 @@ export function ReceiverApp() {
   }
   // ------------------------------------
 
-  const handleSelectStudent = (name: string) => {
-    setActiveStudent(name)
-    setStatus("STREAMING")
+  const handleSelectStudent = (clientId: string) => {
+    // Wysyłamy prośbę do serwera
+    requestStreamFromClient(clientId)
   }
 
   const handleStopSharing = () => {
-    setActiveStudent(null)
-    setStatus("LOBBY")
+    // Zatrzymujemy udostępnianie na serwerze
+    stopCasting()
     setIsFullscreen(false)
     setBarPos({ x: 0, y: 0 })
   }
@@ -59,7 +68,7 @@ export function ReceiverApp() {
           Kod dostępu sali
         </p>
         <h2 className="text-6xl font-bold text-emerald-400 tracking-widest drop-shadow-lg">
-          {pin}
+          {pin || "..."}
         </h2>
       </div>
 
@@ -70,12 +79,12 @@ export function ReceiverApp() {
         
         <ul className="space-y-3 overflow-y-auto flex-1 pr-2">
           {connectedStudents.map(student => (
-            <li key={student.id} className="flex justify-between items-center p-3 bg-slate-800/80 rounded-xl border border-slate-700/50 transition-colors">
-              <span className="font-medium text-slate-300">{student.name}</span>
+            <li key={student.clientId} className="flex justify-between items-center p-3 bg-slate-800/80 rounded-xl border border-slate-700/50 transition-colors">
+              <span className="font-medium text-slate-300">{student.clientName}</span>
               <Button 
                 size="sm"
-                onClick={() => handleSelectStudent(student.name)}
-                disabled={status === "STREAMING"}
+                onClick={() => handleSelectStudent(student.clientId)}
+                disabled={isStreaming}
                 className="bg-slate-700 hover:bg-emerald-600 text-white cursor-pointer disabled:cursor-not-allowed"
               >
                 Wybierz
@@ -89,7 +98,7 @@ export function ReceiverApp() {
         <Button 
           variant="destructive" 
           className="w-full py-6 text-lg font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-100 disabled:bg-red-950/60 disabled:text-white/20"
-          disabled={status !== "STREAMING"}
+          disabled={!isStreaming}
           onClick={handleStopSharing}
         >
           Zatrzymaj udostępnianie
@@ -98,11 +107,11 @@ export function ReceiverApp() {
     </div>
   )
 
-  if (isFullscreen && status === "STREAMING") {
+  if (isFullscreen && isStreaming) {
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center overflow-hidden">
         <div className="text-slate-500 text-xl border-2 border-dashed border-slate-800 p-20 rounded-3xl">
-          [MOCK] Ekran udostępniany przez: <span className="text-white">{activeStudent}</span>
+          [MOCK] Ekran udostępniany przez: <span className="text-white">{activeStudentName}</span>
         </div>
         
         <div 
@@ -141,12 +150,12 @@ export function ReceiverApp() {
   }
 
   return (
-    <AppLayout status={status} userId="SALA_102" leftPanel={customLeftPanel}>
+    <AppLayout status={isStreaming ? "STREAMING" : "LOBBY"} userId="SALA_102" leftPanel={customLeftPanel}>
       <div className="w-full aspect-video bg-black/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex flex-col items-center justify-center relative overflow-hidden">
-        {status === "STREAMING" ? (
+        {isStreaming ? (
            <>
              <div className="text-emerald-500/50 text-2xl font-mono">
-                [STRUMIEŃ WIDEO: {activeStudent}]
+                [STRUMIEŃ WIDEO: {activeStudentName}]
              </div>
              <Button 
                 className="absolute bottom-6 right-6 cursor-pointer" 

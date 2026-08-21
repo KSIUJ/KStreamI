@@ -97,21 +97,21 @@ export function useCastingSocket(serverIp: string = "localhost") {
     console.log("SENDING WS EVENT:", outboundMessage)
     wsRef.current?.send(JSON.stringify(outboundMessage))
 
-    /* --- MOCK SIMULATION (Gdy brak podpiętego serwera) --- */
-    setTimeout(() => {
-      if (cleanPin === "1234") {
-        emitMockEvent({
-          type: "JOIN_RESPONSE",
-          payload: { success: false, reason: "INVALID_CODE" },
-        })
-      } else {
-        emitMockEvent({
-          type: "JOIN_RESPONSE",
-          payload: { success: true, message: "Connected successfully." },
-        })
-      }
-    }, 400)
-    /* ---------------------------------------------------- */
+  //   /* --- MOCK SIMULATION (Gdy brak podpiętego serwera) --- */
+  //   setTimeout(() => {
+  //     if (cleanPin === "1234") {
+  //       emitMockEvent({
+  //         type: "JOIN_RESPONSE",
+  //         payload: { success: false, reason: "INVALID_CODE" },
+  //       })
+  //     } else {
+  //       emitMockEvent({
+  //         type: "JOIN_RESPONSE",
+  //         payload: { success: true, message: "Connected successfully." },
+  //       })
+  //     }
+  //   }, 400)
+  //   /* ---------------------------------------------------- */
   }, [emitMockEvent])
 
   const disconnect = useCallback(() => {
