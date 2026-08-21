@@ -34,7 +34,7 @@ export function ReceiverApp() {
     stopCasting,
     sendMessage,
     incomingRTCMessage
-  } = useReceiverSocket("localhost")
+  } = useReceiverSocket(window.location.hostname)
 
   const { remoteStream, handleIncomingRTCMessage, stopWebRTC } = useReceiverWebRTC(sendMessage)
 

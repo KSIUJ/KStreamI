@@ -37,7 +37,7 @@ export default function App() {
     sendMessage,
     incomingRTCMessage,
     castRequestTrigger
-  } = useCastingSocket("localhost")
+  } = useCastingSocket(window.location.hostname)
 
   const { handleIncomingRTCMessage } = useSenderWebRTC(captureStream, sendMessage)
 
