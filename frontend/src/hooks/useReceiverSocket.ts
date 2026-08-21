@@ -8,10 +8,10 @@ export interface ConnectedStudent {
 export function useReceiverSocket(serverIp: string = "localhost") {
   const [pin, setPin] = useState<string | null>(null)
   const [connectedStudents, setConnectedStudents] = useState<ConnectedStudent[]>([])
-  
-  // Zgodnie z backendem, stan może być IDLE, PENDING lub ACTIVE
   const [serverState, setServerState] = useState<"IDLE" | "PENDING" | "ACTIVE">("IDLE")
   const [activeClientId, setActiveClientId] = useState<string | null>(null)
+
+  const [incomingRTCMessage, setIncomingRTCMessage] = useState<{type: string, payload: any} | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -35,6 +35,10 @@ export function useReceiverSocket(serverIp: string = "localhost") {
         case "ERROR":
           console.error("[Receiver WS] Błąd serwera:", payload.message)
           break
+        case "OFFER":
+        case "ICE_CANDIDATE":
+          setIncomingRTCMessage({ type, payload })
+          break
       }
     } catch (err) {
       console.error("Błąd parsowania wiadomości WS:", err)
@@ -54,7 +58,6 @@ export function useReceiverSocket(serverIp: string = "localhost") {
     }
   }, [serverIp, handleIncomingMessage])
 
-  // Akcje do wysłania na serwer
   const requestStreamFromClient = useCallback((clientId: string) => {
     wsRef.current?.send(JSON.stringify({
       type: "SELECT_CLIENT",
@@ -69,12 +72,20 @@ export function useReceiverSocket(serverIp: string = "localhost") {
     }))
   }, [])
 
+  const sendMessage = useCallback((type: string, payload: object) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type, payload }))
+    }
+  }, [])
+
   return { 
     pin, 
     connectedStudents, 
     serverState, 
     activeClientId, 
     requestStreamFromClient, 
-    stopCasting 
+    stopCasting,
+    sendMessage,
+    incomingRTCMessage
   }
 }

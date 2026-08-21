@@ -22,7 +22,7 @@ export function LobbyScreen({
   return (
     <div className="flex flex-col gap-5 text-center">
       <div>
-        <h2 className="text-xl font-semibold">Sala 102</h2>
+        <h2 className="text-xl font-semibold text-emerald-400">Połączono z rzutnikiem</h2>
         <p className="text-sm text-slate-400 mt-1">
           {isRequestingCapture
             ? "Wybierz ekran lub okno, które chcesz udostępnić"

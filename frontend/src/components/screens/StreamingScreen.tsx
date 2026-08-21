@@ -45,11 +45,8 @@ export function StreamingScreen({
         </div>
         <div>
           <h2 className="text-xl font-bold text-red-400">
-            Ekran jest przechwytywany lokalnie
+            Udostępniasz ekran
           </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Obraz nie jest jeszcze wysyłany do serwera.
-          </p>
         </div>
       </div>
 
@@ -75,7 +72,7 @@ export function StreamingScreen({
         className="w-full h-14 text-lg font-bold bg-red-600 hover:bg-red-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-red-950/50 cursor-pointer transition-all"
       >
         <StopCircle className="w-6 h-6" />
-        Zatrzymaj przechwytywanie
+        Zatrzymaj udostępnianie
       </Button>
     </div>
   )

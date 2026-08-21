@@ -1,26 +1,58 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { Button } from "@/components/ui/button"
 import { useReceiverSocket } from "@/hooks/useReceiverSocket"
+import { useReceiverWebRTC } from "@/hooks/useReceiverWebRTC"
+
+function VideoPlayer({ stream, className }: { stream: MediaStream | null, className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const videoElement = videoRef.current
+    if (!videoElement) return
+
+    if (stream) {
+      videoElement.srcObject = stream
+      videoElement.play().catch(e => console.log("Oczekiwanie na odtwarzanie...", e))
+    } else {
+      videoElement.srcObject = null
+    }
+  }, [stream])
+
+  return <video ref={videoRef} autoPlay playsInline muted className={className} />
+}
 
 export function ReceiverApp() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   
-  // 1. Używamy naszego nowego hooka połączonego z Pythonem!
   const { 
     pin, 
     connectedStudents, 
     serverState, 
     activeClientId, 
     requestStreamFromClient, 
-    stopCasting 
+    stopCasting,
+    sendMessage,
+    incomingRTCMessage
   } = useReceiverSocket("localhost")
 
-  // Zamiast własnego stanu, opieramy się na tym, co mówi serwer.
-  // Jeśli serwer jest "ACTIVE" (lub "PENDING" w trakcie łączenia), traktujemy to jako streaming.
+  const { remoteStream, handleIncomingRTCMessage, stopWebRTC } = useReceiverWebRTC(sendMessage)
+
+  useEffect(() => {
+    if (incomingRTCMessage) {
+      handleIncomingRTCMessage(incomingRTCMessage.type, incomingRTCMessage.payload)
+    }
+  }, [incomingRTCMessage, handleIncomingRTCMessage])
+
+  useEffect(() => {
+    if (serverState === "IDLE") {
+      stopWebRTC()
+      setIsFullscreen(false)
+    }
+  }, [serverState, stopWebRTC])
+
   const isStreaming = serverState !== "IDLE"
 
-  // Szukamy imienia aktualnie udostępniającego studenta (żeby wyświetlić w interfejsie)
   const activeStudentObj = connectedStudents.find(s => s.clientId === activeClientId)
   const activeStudentName = activeStudentObj ? activeStudentObj.clientName : "Nieznany"
 
@@ -50,13 +82,12 @@ export function ReceiverApp() {
   // ------------------------------------
 
   const handleSelectStudent = (clientId: string) => {
-    // Wysyłamy prośbę do serwera
     requestStreamFromClient(clientId)
   }
 
   const handleStopSharing = () => {
-    // Zatrzymujemy udostępnianie na serwerze
     stopCasting()
+    stopWebRTC() 
     setIsFullscreen(false)
     setBarPos({ x: 0, y: 0 })
   }
@@ -110,12 +141,13 @@ export function ReceiverApp() {
   if (isFullscreen && isStreaming) {
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center overflow-hidden">
-        <div className="text-slate-500 text-xl border-2 border-dashed border-slate-800 p-20 rounded-3xl">
-          [MOCK] Ekran udostępniany przez: <span className="text-white">{activeStudentName}</span>
+        {/* Renderujemy PRAWDZIWE WIDEO na pełnym ekranie zamiast mocka */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <VideoPlayer stream={remoteStream} className="w-full h-full object-contain" />
         </div>
         
         <div 
-          className="absolute bottom-8 bg-slate-900/90 backdrop-blur-md p-2 pr-3 rounded-2xl border border-slate-700 flex items-center gap-3 shadow-2xl"
+          className="absolute bottom-8 bg-slate-900/90 backdrop-blur-md p-2 pr-3 rounded-2xl border border-slate-700 flex items-center gap-3 shadow-2xl z-10"
           style={{ transform: `translate(${barPos.x}px, ${barPos.y}px)` }}
         >
            <div 
@@ -150,22 +182,28 @@ export function ReceiverApp() {
   }
 
   return (
-    <AppLayout status={isStreaming ? "STREAMING" : "LOBBY"} userId="SALA_102" leftPanel={customLeftPanel}>
-      <div className="w-full aspect-video bg-black/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex flex-col items-center justify-center relative overflow-hidden">
-        {isStreaming ? (
+    <AppLayout status={isStreaming ? "STREAMING" : "LOBBY"} userId="Odbiornik Główny" leftPanel={customLeftPanel}>
+      <div className="w-full aspect-video bg-black/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex flex-col items-center justify-center relative overflow-hidden">        {isStreaming ? (
            <>
-             <div className="text-emerald-500/50 text-2xl font-mono">
-                [STRUMIEŃ WIDEO: {activeStudentName}]
-             </div>
+             {remoteStream ? (
+               <VideoPlayer stream={remoteStream} className="w-full h-full object-contain absolute inset-0 z-0" />
+             ) : (
+               <div className="absolute inset-0 flex flex-col items-center justify-center z-0 text-emerald-500/70">
+                 <span className="w-12 h-12 rounded-full border-4 border-emerald-500/30 border-t-emerald-500 animate-spin mb-4" />
+                 <p className="font-medium animate-pulse tracking-wide">Zestawianie połączenia wideo...</p>
+               </div>
+             )}
+             
              <Button 
-                className="absolute bottom-6 right-6 cursor-pointer" 
+                className="absolute bottom-6 right-6 cursor-pointer z-10 shadow-lg" 
                 onClick={() => setIsFullscreen(true)}
+                disabled={!remoteStream}
              >
                Powiększ (Pełny ekran)
              </Button>
            </>
         ) : (
-           <div className="text-center">
+           <div className="text-center z-10">
              <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mx-auto mb-4 border border-slate-700">
                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
              </div>
