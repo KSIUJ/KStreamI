@@ -47,6 +47,8 @@ Then open:
 - API: <http://localhost:8000>
 - API documentation: <http://localhost:8000/docs>
 
+> Screen capture requires HTTPS or localhost
+
 To stop the application, press `Ctrl+C`.
 
 To stop and remove the containers, run:

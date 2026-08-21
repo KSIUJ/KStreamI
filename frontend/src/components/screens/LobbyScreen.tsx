@@ -1,39 +1,36 @@
-import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
 import { DevMockControls } from "@/components/dev/DevMockControls"
+import type { CaptureStatus } from "@/hooks/useDisplayCapture"
 
 interface LobbyScreenProps {
   serverBusy: boolean
   emitMockEvent: (eventObject: object) => void
-  onStartStreaming: () => void
+  captureStatus: CaptureStatus
+  captureError: string | null
+  onStartCapture: () => Promise<void>
   onDisconnect: () => void
 }
 
 export function LobbyScreen({
   serverBusy,
   emitMockEvent,
-  onStartStreaming,
+  captureStatus,
+  captureError,
+  onStartCapture,
   onDisconnect,
 }: LobbyScreenProps) {
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !serverBusy) {
-        e.preventDefault()
-        onStartStreaming()
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [serverBusy, onStartStreaming])
+  const isRequestingCapture = captureStatus === "requesting"
 
   return (
     <div className="flex flex-col gap-5 text-center">
       <div>
         <h2 className="text-xl font-semibold">Sala 102</h2>
-        <p className="text-sm text-slate-400 mt-1">Gotowy do udostępniania</p>
+        <p className="text-sm text-slate-400 mt-1">
+          {isRequestingCapture
+            ? "Wybierz ekran lub okno, które chcesz udostępnić"
+            : "Gotowy do udostępniania"}
+        </p>
       </div>
 
       <div
@@ -63,18 +60,27 @@ export function LobbyScreen({
       <div className="flex flex-col gap-2">
         <Button
           type="button"
-          disabled={serverBusy}
-          onClick={onStartStreaming}
+          disabled={serverBusy || isRequestingCapture}
+          onClick={() => void onStartCapture()}
           className="w-full h-12 text-base font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed transition-all"
         >
-          Rozpocznij udostępnianie
+          {isRequestingCapture
+            ? "Wybór w toku…"
+            : "Rozpocznij udostępnianie"}
         </Button>
+
+        {captureError && (
+          <p className="text-sm text-red-400" role="alert">
+            {captureError}
+          </p>
+        )}
 
         <Button
           type="button"
           variant="ghost"
+          disabled={isRequestingCapture}
           onClick={onDisconnect}
-          className="w-full bg-slate-800 text-slate-300 font-normal border border-slate-700/50 hover:bg-slate-700 hover:text-slate-100 transition-all cursor-pointer"
+          className="w-full bg-slate-800 text-slate-300 font-normal border border-slate-700/50 hover:bg-slate-700 hover:text-slate-100 disabled:opacity-50 transition-all cursor-pointer disabled:cursor-not-allowed"
         >
           Rozłącz
         </Button>
