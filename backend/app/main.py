@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.signaling import router
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -18,7 +19,6 @@ async def root():
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
-
 
 app_state = {
     "maintenance_mode": False
@@ -35,3 +35,5 @@ def toggle_maintenance_api():
     app_state["maintenance_mode"] = not app_state["maintenance_mode"]
     status_text = "WŁĄCZONY" if app_state["maintenance_mode"] else "WYŁĄCZONY"
     return {"message": f"Tryb konserwacji został {status_text}", "current_state": app_state["maintenance_mode"]}
+
+app.include_router(router)
