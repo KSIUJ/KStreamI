@@ -7,6 +7,7 @@ export function useCastingSocket(serverIp: string = "localhost") {
   const [serverBusy, setServerBusy] = useState<boolean>(false)
   const [clientId, setClientId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [retryTrigger, setRetryTrigger] = useState(0)
 
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -74,7 +75,7 @@ export function useCastingSocket(serverIp: string = "localhost") {
     return () => {
       ws?.close()
     }
-  }, [serverIp, handleIncomingMessage])
+  }, [serverIp, handleIncomingMessage, retryTrigger]) 
 
   // METODA DLA DEV TOOLS: Symulowanie zdarzeń wejściowych z serwera (JSON)
   const emitMockEvent = useCallback((eventObject: object) => {
@@ -115,8 +116,16 @@ export function useCastingSocket(serverIp: string = "localhost") {
   }, [emitMockEvent])
 
   const disconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    
     setStatus("DISCONNECTED")
     setErrorMessage(null)
+    setClientId(null)
+  
+    setRetryTrigger(prev => prev + 1)
   }, [])
 
   return {

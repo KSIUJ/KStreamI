@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DevMockControls } from "@/components/dev/DevMockControls"
 
 interface DisconnectedScreenProps {
   pin: string
@@ -73,9 +72,6 @@ export function DisconnectedScreen({
       >
         Połącz
       </Button>
-
-      {/* --- DEV NOTE: TYLKO INFORMACJA O KODZIE 1234 --- */}
-      <DevMockControls showPinErrorHintOnly={true} />
     </form>
   )
 }

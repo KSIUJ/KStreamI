@@ -1,11 +1,9 @@
 import { Button } from "@/components/ui/button"
 import { Signal } from "lucide-react"
-import { DevMockControls } from "@/components/dev/DevMockControls"
 import type { CaptureStatus } from "@/hooks/useDisplayCapture"
 
 interface LobbyScreenProps {
   serverBusy: boolean
-  emitMockEvent: (eventObject: object) => void
   captureStatus: CaptureStatus
   captureError: string | null
   onStartCapture: () => Promise<void>
@@ -14,7 +12,6 @@ interface LobbyScreenProps {
 
 export function LobbyScreen({
   serverBusy,
-  emitMockEvent,
   captureStatus,
   captureError,
   onStartCapture,
@@ -85,12 +82,6 @@ export function LobbyScreen({
           Rozłącz
         </Button>
       </div>
-
-      {/* --- MOCK CONTROLS --- */}
-      <DevMockControls
-        serverBusy={serverBusy}
-        emitMockEvent={emitMockEvent}
-      />
     </div>
   )
 }
