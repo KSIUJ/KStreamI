@@ -101,7 +101,7 @@ async def receiveEnvelope(websocket: WebSocket) -> dict | None:
 @router.websocket("/v1/receiver")
 async def ws_rec(websocket: WebSocket):
     await websocket.accept()
-    clientId = session.nextClientId()
+    clientId = session.nextReceiverId()
     session.wsRec = websocket
     joinCode = session.ensureJoinCode()
 
@@ -180,11 +180,15 @@ async def ws_rec(websocket: WebSocket):
 @router.websocket("/v1")
 async def ws_sender(websocket: WebSocket):
     await websocket.accept()
-    clientId = session.nextClientId()
+    clientId = session.nextSenderId()
     session.senders[clientId] = {"ws": websocket, "name": None, "joined": False}
 
     await websocket.send_json(
-        msg.serverHelloSender(clientId, session.receiverConnected())
+        msg.serverHelloSender(
+            clientId,
+            session.isBusy(),
+            session.receiverConnected(),
+        )
     )
 
     try:
@@ -201,6 +205,8 @@ async def ws_sender(websocket: WebSocket):
 
                 if alreadyJoined:
                     await websocket.send_json(msg.error("INVALID_STATE", "Already joined."))
+                elif not session.receiverConnected():
+                    await websocket.send_json(msg.joinResponse(False, "NO_RECEIVER"))
                 elif not codeValid:
                     await websocket.send_json(msg.joinResponse(False, "INVALID_CODE"))
                 else:
