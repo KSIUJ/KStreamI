@@ -57,6 +57,16 @@ To stop and remove the containers, run:
 docker compose down
 ```
 
+### Tests
+
+Run the backend tests from the project root:
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+cd backend
+python -m pytest -v
+```
+
 ## Project structure
 _TBD_
 <!-- TODO: fill in as the repo takes shape -->
