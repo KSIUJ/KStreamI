@@ -386,6 +386,62 @@ class TestSignaling:
             "receiverConnected": True,
         }
 
+    async def test_unjoined_sender_is_notified_when_receiver_connects(self) -> None:
+        sender, senderHello = await self.startSender()
+        assert not senderHello["payload"]["receiverConnected"]
+
+        _, _, clientList = await self.startReceiver()
+        assert clientList["payload"]["clients"] == []
+
+        stateUpdate = await self.assertMessageType(sender, "STATE_UPDATE")
+        assert stateUpdate["payload"] == {
+            "isBusy": False,
+            "receiverConnected": True,
+        }
+
+    async def test_unjoined_sender_is_notified_when_session_becomes_idle(self) -> None:
+        receiver, receiverHello, _ = await self.startReceiver()
+        activeSender, _ = await self.startSender()
+        await self.joinSender(
+            activeSender,
+            receiver,
+            receiverHello["payload"]["joinCode"],
+            "Active sender",
+        )
+        await activeSender.clientSend(
+            {"type": "OFFER", "payload": {"sdp": "active-offer"}}
+        )
+        await self.assertMessageType(receiver, "OFFER")
+        await self.assertMessageType(activeSender, "STATE_UPDATE")
+        await self.assertMessageType(receiver, "STATE_UPDATE")
+
+        waitingSender, waitingSenderHello = await self.startSender()
+        assert waitingSenderHello["payload"]["isBusy"]
+
+        await activeSender.clientSend({"type": "STOP_CASTING", "payload": {}})
+        await self.assertMessageType(receiver, "STOP_CASTING")
+        await self.assertMessageType(activeSender, "STATE_UPDATE")
+        stateUpdate = await self.assertMessageType(waitingSender, "STATE_UPDATE")
+        assert stateUpdate["payload"] == {
+            "isBusy": False,
+            "receiverConnected": True,
+        }
+        await self.assertMessageType(receiver, "STATE_UPDATE")
+
+        await self.joinSender(
+            waitingSender,
+            receiver,
+            receiverHello["payload"]["joinCode"],
+            "Waiting sender",
+        )
+        await waitingSender.clientSend(
+            {"type": "OFFER", "payload": {"sdp": "waiting-offer"}}
+        )
+        offer = await self.assertMessageType(receiver, "OFFER")
+        waitingSenderId = waitingSenderHello["payload"]["clientId"]
+        assert offer["payload"]["clientId"] == waitingSenderId
+        assert signaling.session.activeClientId == waitingSenderId
+
     async def test_sender_can_join_during_active_session(self) -> None:
         receiver, receiverHello, _ = await self.startReceiver()
         senderA, senderAHello = await self.startSender()

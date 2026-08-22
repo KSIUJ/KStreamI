@@ -37,8 +37,7 @@ async def sendJsonBestEffort(
 async def broadcastSenderState():
     message = msg.stateUpdateSender(session.isBusy(), session.receiverConnected())
     for clientId, s in list(session.senders.items()):
-        if s["joined"]:
-            await sendJsonBestEffort(s["ws"], message, clientId)
+        await sendJsonBestEffort(s["ws"], message, clientId)
 
 
 async def broadcastReceiverState():
