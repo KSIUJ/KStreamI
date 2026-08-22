@@ -3,9 +3,11 @@ from ..core import messages as msg
 from ..core.session import PENDING_TIMEOUT_SECONDS, Session, SessionState
 import asyncio
 import json
+import logging
 
 router = APIRouter()
 session = Session()
+logger = logging.getLogger(__name__)
 
 KNOWN_TYPES = {
     "JOIN_REQUEST",
@@ -17,26 +19,53 @@ KNOWN_TYPES = {
     "STOP_CASTING",
 }
 
+
+async def sendJsonBestEffort(
+    websocket: WebSocket, message: dict, recipient: str
+) -> None:
+    try:
+        await websocket.send_json(message)
+    except Exception:
+        logger.warning(
+            "Failed to send %s to %s",
+            message.get("type", "message"),
+            recipient,
+            exc_info=True,
+        )
+
+
 async def broadcastSenderState():
-    for s in session.senders.values():
+    message = msg.stateUpdateSender(session.isBusy(), session.receiverConnected())
+    for clientId, s in list(session.senders.items()):
         if s["joined"]:
-            await s["ws"].send_json(
-                msg.stateUpdateSender(session.isBusy(), session.receiverConnected())
-            )
+            await sendJsonBestEffort(s["ws"], message, clientId)
+
 
 async def broadcastReceiverState():
     if session.wsRec:
-        await session.wsRec.send_json(
-            msg.stateUpdateReceiver(session.state.value, session.activeClientId)
+        await sendJsonBestEffort(
+            session.wsRec,
+            msg.stateUpdateReceiver(session.state.value, session.activeClientId),
+            "receiver",
         )
 
 
 async def cancelToIdle(notifySender: bool, notifyReceiver: bool):
-    if notifySender and session.activeClientId in session.senders:
-        await session.senders[session.activeClientId]["ws"].send_json(msg.stopCasting())
-    if notifyReceiver and session.state == SessionState.ACTIVE and session.wsRec:
-        await session.wsRec.send_json(msg.stopCasting())
-    session.resetIdle()
+    activeClientId = session.activeClientId
+    previousState = session.state
+
+    try:
+        if notifySender and activeClientId in session.senders:
+            await sendJsonBestEffort(
+                session.senders[activeClientId]["ws"],
+                msg.stopCasting(),
+                activeClientId,
+            )
+        if notifyReceiver and previousState == SessionState.ACTIVE and session.wsRec:
+            await sendJsonBestEffort(session.wsRec, msg.stopCasting(), "receiver")
+    finally:
+        session.resetIdle()
+
     await broadcastSenderState()
     await broadcastReceiverState()
 
@@ -78,6 +107,7 @@ async def ws_rec(websocket: WebSocket):
 
     await websocket.send_json(msg.serverHelloReceiver(clientId, joinCode))
     await websocket.send_json(msg.clientListUpdate(session.senders))
+    await broadcastSenderState()
 
     try:
         while True:
@@ -142,7 +172,8 @@ async def ws_rec(websocket: WebSocket):
         session.wsRec = None
         if session.state != SessionState.IDLE:
             await cancelToIdle(notifySender=True, notifyReceiver=False)
-        await broadcastSenderState()  # receiverConnected: false
+        else:
+            await broadcastSenderState()  # receiverConnected: false
         session.clearJoinCodeIfEmpty()
 
 
@@ -242,5 +273,9 @@ async def ws_sender(websocket: WebSocket):
         if wasActive:
             await cancelToIdle(notifySender=False, notifyReceiver=True)
         if wasJoined and session.wsRec:
-            await session.wsRec.send_json(msg.clientListUpdate(session.senders))
+            await sendJsonBestEffort(
+                session.wsRec,
+                msg.clientListUpdate(session.senders),
+                "receiver",
+            )
         session.clearJoinCodeIfEmpty()

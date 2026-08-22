@@ -314,11 +314,17 @@ class TestSignaling:
 
     async def test_failed_peer_notification_still_resets_session(self) -> None:
         clientId = "sender-test"
+        healthySender = FakeWebSocket()
         signaling.session.state = SessionState.ACTIVE
         signaling.session.activeClientId = clientId
         signaling.session.senders[clientId] = {
             "ws": FailingWebSocket(),
             "name": "Sender",
+            "joined": True,
+        }
+        signaling.session.senders["sender-healthy"] = {
+            "ws": healthySender,
+            "name": "Healthy sender",
             "joined": True,
         }
 
@@ -329,6 +335,8 @@ class TestSignaling:
 
         assert signaling.session.state == SessionState.IDLE
         assert signaling.session.activeClientId is None
+        stateUpdate = await self.assertMessageType(healthySender, "STATE_UPDATE")
+        assert not stateUpdate["payload"]["isBusy"]
 
     async def test_receiver_disconnect_updates_senders_once(self) -> None:
         receiver, receiverHello, _ = await self.startReceiver()
