@@ -523,3 +523,43 @@ class TestSignaling:
             "success": False,
             "reason": "NO_RECEIVER",
         }
+
+    async def test_invalid_client_names_are_rejected_and_valid_name_is_trimmed(
+        self,
+    ) -> None:
+        receiver, receiverHello, _ = await self.startReceiver()
+        sender, senderHello = await self.startSender()
+        joinCode = receiverHello["payload"]["joinCode"]
+        invalidPayloads = [
+            {"joinCode": joinCode},
+            {"joinCode": joinCode, "clientName": ""},
+            {"joinCode": joinCode, "clientName": "   "},
+            {"joinCode": joinCode, "clientName": 123},
+            {"joinCode": joinCode, "clientName": "x" * 65},
+        ]
+
+        for payload in invalidPayloads:
+            await sender.clientSend({"type": "JOIN_REQUEST", "payload": payload})
+            response = await self.assertMessageType(sender, "JOIN_RESPONSE")
+            assert response["payload"] == {
+                "success": False,
+                "reason": "INVALID_CLIENT_NAME",
+            }
+
+        assert receiver.drainMessages() == []
+
+        await sender.clientSend(
+            {
+                "type": "JOIN_REQUEST",
+                "payload": {"joinCode": joinCode, "clientName": "  PiotrP  "},
+            }
+        )
+        response = await self.assertMessageType(sender, "JOIN_RESPONSE")
+        assert response["payload"] == {"success": True}
+        clientList = await self.assertMessageType(receiver, "CLIENT_LIST_UPDATE")
+        assert clientList["payload"]["clients"] == [
+            {
+                "clientId": senderHello["payload"]["clientId"],
+                "clientName": "PiotrP",
+            }
+        ]

@@ -8,6 +8,7 @@ import logging
 router = APIRouter()
 session = Session()
 logger = logging.getLogger(__name__)
+CLIENT_NAME_MAX_LENGTH = 64
 
 KNOWN_TYPES = {
     "JOIN_REQUEST",
@@ -18,6 +19,17 @@ KNOWN_TYPES = {
     "PEER_CONNECTION_FAILED",
     "STOP_CASTING",
 }
+
+
+def normalizeClientName(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    if not normalized or len(normalized) > CLIENT_NAME_MAX_LENGTH:
+        return None
+
+    return normalized
 
 
 async def sendJsonBestEffort(
@@ -210,6 +222,7 @@ async def ws_sender(websocket: WebSocket):
             if msgType == "JOIN_REQUEST":
                 alreadyJoined = session.senders[clientId]["joined"]
                 codeValid = payload.get("joinCode") == session.joinCode
+                clientName = normalizeClientName(payload.get("clientName"))
 
                 if alreadyJoined:
                     await websocket.send_json(msg.error("INVALID_STATE", "Already joined."))
@@ -217,9 +230,11 @@ async def ws_sender(websocket: WebSocket):
                     await websocket.send_json(msg.joinResponse(False, "NO_RECEIVER"))
                 elif not codeValid:
                     await websocket.send_json(msg.joinResponse(False, "INVALID_CODE"))
+                elif clientName is None:
+                    await websocket.send_json(msg.joinResponse(False, "INVALID_CLIENT_NAME"))
                 else:
                     session.senders[clientId]["joined"] = True
-                    session.senders[clientId]["name"] = payload.get("clientName", "")
+                    session.senders[clientId]["name"] = clientName
                     await websocket.send_json(msg.joinResponse(True))
                     if session.wsRec:
                         await session.wsRec.send_json(msg.clientListUpdate(session.senders))
