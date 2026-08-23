@@ -121,6 +121,14 @@ async def receiveEnvelope(websocket: WebSocket) -> dict | None:
 @router.websocket("/v1/receiver")
 async def ws_rec(websocket: WebSocket):
     await websocket.accept()
+
+    if session.wsRec is not None:
+        await websocket.send_json(
+            msg.error("INVALID_STATE", "Receiver already connected.")
+        )
+        await websocket.close(code=1008)
+        return
+
     clientId = session.nextReceiverId()
     session.wsRec = websocket
     joinCode = session.ensureJoinCode()

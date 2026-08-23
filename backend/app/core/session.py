@@ -3,7 +3,7 @@ import secrets
 from enum import Enum
 from fastapi import WebSocket
 
-PENDING_TIMEOUT_SECONDS = 20
+PENDING_TIMEOUT_SECONDS = 45
 
 
 def genJoinCode() -> str:

@@ -19,6 +19,7 @@ class FakeWebSocket:
         self.incoming: asyncio.Queue[str | object] = asyncio.Queue()
         self.outgoing: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self.accepted = False
+        self.closeCode: int | None = None
         self.handlerTask: asyncio.Task | None = None
 
     async def accept(self) -> None:
@@ -33,6 +34,9 @@ class FakeWebSocket:
 
     async def send_json(self, message: dict[str, Any]) -> None:
         await self.outgoing.put(message)
+
+    async def close(self, code: int = 1000) -> None:
+        self.closeCode = code
 
     async def clientSend(self, message: dict[str, Any]) -> None:
         await self.incoming.put(json.dumps(message))
@@ -156,6 +160,34 @@ class TestSignaling:
 
         assert sender.handlerTask is not None
         assert not sender.handlerTask.done()
+        await self.joinSender(
+            sender,
+            receiver,
+            receiverHello["payload"]["joinCode"],
+            "Sender",
+        )
+
+    async def test_second_receiver_is_rejected_without_replacing_first(self) -> None:
+        receiver, receiverHello, _ = await self.startReceiver()
+        secondReceiver = FakeWebSocket()
+        task = asyncio.create_task(signaling.ws_rec(secondReceiver))
+        secondReceiver.handlerTask = task
+        self.handlerTasks.append(task)
+
+        error = await self.assertMessageType(secondReceiver, "ERROR")
+        assert error["payload"] == {
+            "code": "INVALID_STATE",
+            "message": "Receiver already connected.",
+        }
+        await asyncio.wait_for(task, MESSAGE_TIMEOUT_SECONDS)
+
+        assert secondReceiver.accepted
+        assert secondReceiver.closeCode == 1008
+        assert signaling.session.wsRec is receiver
+        assert receiver.handlerTask is not None
+        assert not receiver.handlerTask.done()
+
+        sender, _ = await self.startSender()
         await self.joinSender(
             sender,
             receiver,
