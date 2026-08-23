@@ -37,6 +37,9 @@ class FakeWebSocket:
     async def clientSend(self, message: dict[str, Any]) -> None:
         await self.incoming.put(json.dumps(message))
 
+    async def clientSendRaw(self, message: str) -> None:
+        await self.incoming.put(message)
+
     async def disconnect(self) -> None:
         await self.incoming.put(DISCONNECT)
 
@@ -135,6 +138,30 @@ class TestSignaling:
             if asyncio.get_running_loop().time() >= deadline:
                 pytest.fail("Timed out waiting for signaling messages")
             await asyncio.sleep(0.001)
+
+    async def test_malformed_messages_do_not_stop_sender_handler(self) -> None:
+        receiver, receiverHello, _ = await self.startReceiver()
+        sender, _ = await self.startSender()
+        malformedMessages = [
+            "{",
+            json.dumps({"type": "JOIN_REQUEST", "payload": []}),
+            json.dumps({"type": "OFFER", "payload": None}),
+            json.dumps({"type": [], "payload": {}}),
+        ]
+
+        for malformedMessage in malformedMessages:
+            await sender.clientSendRaw(malformedMessage)
+            error = await self.assertMessageType(sender, "ERROR")
+            assert error["payload"]["code"] == "MALFORMED_ENVELOPE"
+
+        assert sender.handlerTask is not None
+        assert not sender.handlerTask.done()
+        await self.joinSender(
+            sender,
+            receiver,
+            receiverHello["payload"]["joinCode"],
+            "Sender",
+        )
 
     async def test_full_casting_flow_can_switch_senders_and_restart(self) -> None:
         receiver, receiverHello, _ = await self.startReceiver()

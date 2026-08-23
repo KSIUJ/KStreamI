@@ -90,6 +90,15 @@ async def receiveEnvelope(websocket: WebSocket) -> dict | None:
         await websocket.send_json(msg.error("MALFORMED_ENVELOPE", "Missing type/payload."))
         return None
 
+    if not isinstance(data["type"], str) or not isinstance(data["payload"], dict):
+        await websocket.send_json(
+            msg.error(
+                "MALFORMED_ENVELOPE",
+                "Type must be a string and payload must be an object.",
+            )
+        )
+        return None
+
     if data["type"] not in KNOWN_TYPES:
         await websocket.send_json(msg.error("UNSUPPORTED_TYPE", f"Unknown type {data['type']!r}."))
         return None
