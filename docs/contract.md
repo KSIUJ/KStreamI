@@ -48,17 +48,16 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 1. `SERVER_HELLO`
 
   - Direction: Server $\rightarrow$ Client (sent on connection open, on both the `sender` and `receiver` paths)
-  - Trigger: Dispatched immediately upon opening a new WebSocket connection.
+  - Trigger: Dispatched immediately upon opening a new WebSocket connection, except when an additional `receiver` connection is rejected as described below.
 
 ```json
 // Sent on a /v1 (sender) connection
 {
   "type": "SERVER_HELLO",
   "payload": {
-    "clientId": "client-a1b2c3",
+    "clientId": "sender-000001",
     "isBusy": false,
-    "receiverConnected": true,
-    "joinCode": null
+    "receiverConnected": true
   }
 }
 ```
@@ -68,7 +67,7 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 {
   "type": "SERVER_HELLO",
   "payload": {
-    "clientId": "receiver-9f8e7d",
+    "clientId": "receiver-000001",
     "isBusy": false,
     "joinCode": "7392"
   }
@@ -77,12 +76,14 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 
 | Field | Type | Constraints |
 |---|---|---|
-| `clientId` | string | Server-generated, unique per active connection, prefixed with `client-` on a `sender` connection or `receiver-` on a `receiver` connection so role is obvious in logs. Assigned once when the connection opens and immutable for that connection's lifetime — it never changes while the WebSocket stays open, and a reconnect gets a new one. The suffix format itself (e.g. a UUID) is an implementation detail — clients must not parse it or rely on anything beyond uniqueness and the prefix. |
+| `clientId` | string | Server-generated, unique per active connection, prefixed with `sender-` on a `sender` connection or `receiver-` on a `receiver` connection so the role is obvious in logs. IDs are assigned independently for each role. An ID is immutable for the connection's lifetime, and a reconnect gets a new one. The suffix format is an implementation detail — clients must not parse it or rely on anything beyond uniqueness and the role prefix. |
 | `isBusy` | boolean | Current server-wide busy state at connection time (`true` for `PENDING` or `ACTIVE` — see §4.3). Sent to both roles. |
-| `receiverConnected` | boolean | Sender-only. `true` if at least one `receiver` connection is currently open on the server, `false` otherwise — lets a sender's UI show upfront whether casting is even possible right now. |
-| `joinCode` | string \| null | On a `receiver` connection: exactly 4 digits (`^[0-9]{4}$`), the code shown on the projector screen for this session — see the persistence note below. On a `sender` connection: always `null` — the sender never receives the code over the wire; the user reads it off the projector and types it in via `JOIN_REQUEST`. |
+| `receiverConnected` | boolean | Sender-only. `true` if the single allowed `receiver` connection is currently open on the server, `false` otherwise — lets a sender's UI show upfront whether casting is possible. |
+| `joinCode` | string | Receiver-only. Exactly 4 digits (`^[0-9]{4}$`), shown on the projector screen for this session — see the persistence note below. |
 
-**`joinCode` persistence:** the code belongs to the server's current session, not to any single `receiver` connection. It's generated once — the first time a `receiver` connects while the server is completely empty — and stays alive for as long as at least one sender is `Joined` **or** at least one `receiver` is connected. A `receiver` reconnecting (e.g. after a projector page reload, or a brief network drop — §3.3.10) receives the *same* code back, so already-`Joined` senders never need to re-enter it or re-`JOIN_REQUEST`. The code is only regenerated once the server returns to a fully empty state (zero `Joined` senders, zero connected receivers).
+**`joinCode` persistence:** the code belongs to the server's current session, not to any single `receiver` connection. It's generated once — the first time a `receiver` connects while the server is completely empty — and stays alive for as long as at least one sender is `Joined` **or** the `receiver` is connected. A `receiver` reconnecting (e.g. after a projector page reload, or a brief network drop — §3.3.10) receives the *same* code back, so already-`Joined` senders never need to re-enter it or re-`JOIN_REQUEST`. The code is only regenerated once the server returns to a fully empty state (zero `Joined` senders and zero connected receiver).
+
+The server accepts at most one `receiver` connection at a time. If another client connects to `/v1/receiver` while a receiver is already connected, the server sends `ERROR` (`INVALID_STATE`) instead of `SERVER_HELLO`, then closes the additional WebSocket with close code `1008`. The existing receiver and session state remain unchanged.
 
 2. `JOIN_REQUEST`
   - Direction: Sender $\rightarrow$ Server
@@ -101,7 +102,7 @@ All messages sent over the WebSocket connection (both Client $\rightarrow$ Serve
 | Field | Type | Constraints |
 |---|---|---|
 | `joinCode` | string | Exactly 4 digits (`^[0-9]{4}$`). |
-| `clientName` | string | 1–64 characters, trimmed, control characters stripped server-side before display. |
+| `clientName` | string | 1–64 characters after trimming leading and trailing whitespace. |
 
 Sent on a `receiver` connection: rejected with `ERROR` (`INVALID_STATE`) — a receiver never joins. Sent by a sender that is already `Joined`: also rejected with `ERROR` (`INVALID_STATE`) — a sender may only join once per connection.
 
@@ -131,9 +132,11 @@ Sent on a `receiver` connection: rejected with `ERROR` (`INVALID_STATE`) — a r
 | Field | Type | Constraints |
 |---|---|---|
 | `success` | boolean | Required. |
-| `reason` | string enum | Present only when `success: false`. One of: `INVALID_CODE`, `SERVER_FULL`. |
+| `reason` | string enum | Present only when `success: false`. One of: `INVALID_CODE`, `NO_RECEIVER`, `INVALID_CLIENT_NAME`. |
 
-`SERVER_FULL`: the server enforces a maximum number of concurrently `Joined` senders; returned when a `JOIN_REQUEST` with an otherwise-valid `joinCode` arrives after that cap has already been reached. The maximum number of concurrently `Joined` senders is a tunable server setting (e.g. 50) — this is not part of the protocol itself.
+- `INVALID_CODE` is returned when `joinCode` does not match the current session's code.
+- `NO_RECEIVER` is returned when no receiver is currently connected.
+- `INVALID_CLIENT_NAME` is returned when `clientName` is missing, is not a string, is empty after trimming, or exceeds 64 characters after trimming.
 
 A sender that has not received a successful `JOIN_RESPONSE` is **not joined**, and any subsequent `OFFER`/`STOP_CASTING` from it is rejected with `ERROR` (`INVALID_STATE`, see §3.4) — treated as an out-of-order message, same as any other wrong-sequence case. On a successful join, the server also sends `CLIENT_LIST_UPDATE` (§3.3.12) to the `receiver` connection so the operator's client list stays current.
 
@@ -149,7 +152,7 @@ As of this revision the server relays this whole section between a Sender and th
 {
   "type": "SELECT_CLIENT",
   "payload": {
-    "clientId": "client-a1b2c3"
+    "clientId": "sender-000001"
   }
 }
 ```
@@ -200,7 +203,7 @@ The sender reacts to `CAST_REQUEST` exactly as if the local user had clicked "St
   "type": "OFFER",
   "payload": {
     "sdp": "v=0\r\no=- 46112345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0...",
-    "clientId": "client-a1b2c3"
+    "clientId": "sender-000001"
   }
 }
 ```
@@ -338,7 +341,7 @@ Sender-facing broadcasts only go to currently `Joined` sender connections — a 
 // Sent to the receiver connection
 {
   "type": "STATE_UPDATE",
-  "payload": { "state": "ACTIVE", "activeClientId": "client-a1b2c3" }
+  "payload": { "state": "ACTIVE", "activeClientId": "sender-000001" }
 }
 ```
 
@@ -358,7 +361,7 @@ Sender-facing broadcasts only go to currently `Joined` sender connections — a 
   "type": "CLIENT_LIST_UPDATE",
   "payload": {
     "clients": [
-      { "clientId": "client-a1b2c3", "clientName": "Anna's Laptop" }
+      { "clientId": "sender-000001", "clientName": "Anna's Laptop" }
     ]
   }
 }
@@ -368,7 +371,7 @@ Sender-facing broadcasts only go to currently `Joined` sender connections — a 
 |---|---|---|
 | `clients` | array | Every currently joined sender, including the pending or active one if any (cross-reference `STATE_UPDATE.state` and `activeClientId` to know which one, if any). |
 | `clients[].clientId` | string | See `SERVER_HELLO`. |
-| `clients[].clientName` | string | As supplied in `JOIN_REQUEST`. |
+| `clients[].clientName` | string | The normalized `clientName` accepted from `JOIN_REQUEST`. |
 
 ### 3.4 Errors
 
@@ -395,15 +398,15 @@ Sender-facing broadcasts only go to currently `Joined` sender connections — a 
 
 | Error Code | HTTP-Equivalent | Description |
 |---|---|---|
-| `MALFORMED_ENVELOPE` | 400 Bad Request | Message isn't valid JSON, or the `type`/`payload` field is missing. |
+| `MALFORMED_ENVELOPE` | 400 Bad Request | Message isn't a valid JSON object, the `type`/`payload` field is missing, `type` isn't a string, or `payload` isn't an object. |
 | `UNSUPPORTED_TYPE` | 400 Bad Request | Sent WebSocket `type` field is not recognized by the server. |
-| `INVALID_STATE` | 409 Conflict | Message sent out of the required order (e.g. `OFFER` before a successful `JOIN_REQUEST`, a `JOIN_REQUEST` from a sender that's already `Joined`, `ANSWER`/`ICE_CANDIDATE` with no negotiation in progress, `PEER_CONNECTION_FAILED` with nothing to fail), sent on a connection role that doesn't support it (e.g. `JOIN_REQUEST` on a `receiver` connection, `SELECT_CLIENT`/`ANSWER` sent from a `sender` connection), or a `SELECT_CLIENT`/`STOP_CASTING` that no longer matches reality (unknown `clientId`, or nothing to stop or cancel). |
+| `INVALID_STATE` | 409 Conflict | Message sent out of the required order (e.g. `OFFER` before a successful `JOIN_REQUEST`, a `JOIN_REQUEST` from a sender that's already `Joined`, `ANSWER`/`ICE_CANDIDATE` with no negotiation in progress, `PEER_CONNECTION_FAILED` with nothing to fail), sent on a connection role that doesn't support it (e.g. `JOIN_REQUEST` on a `receiver` connection, `SELECT_CLIENT`/`ANSWER` sent from a `sender` connection), a `SELECT_CLIENT`/`STOP_CASTING` that no longer matches reality (unknown `clientId`, or nothing to stop or cancel), or an additional receiver connection is attempted while one is already connected. |
 | `BUSY` | 409 Conflict | Another sender is already the pending or active one. Applies to `OFFER` and to `SELECT_CLIENT`. |
 | `NO_RECEIVER` | 503 Service Unavailable | A spontaneous `OFFER` (or, less commonly, a `SELECT_CLIENT`) can't be relayed because no `receiver` connection is currently open. |
 
-Note: an invalid PIN is reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`), not via `ERROR` — it's a direct reply to `JOIN_REQUEST`, so it doesn't need a second, competing event type.
+Note: join failures are reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`, `NO_RECEIVER`, or `INVALID_CLIENT_NAME`), not via `ERROR` — they are direct replies to `JOIN_REQUEST`, so they don't need a second, competing event type.
 
-`ERROR` is informational — it does not close the WebSocket connection. The client remains in its current state (per §4) and may retry or surface the message to the user.
+`ERROR` is normally informational — it does not close the WebSocket connection. The client remains in its current state (per §4) and may retry or surface the message to the user. The only exception is an additional receiver connection: after `ERROR` (`INVALID_STATE`), that WebSocket is closed with code `1008`.
 
 ## 4. State Diagrams
 
@@ -438,6 +441,8 @@ The `Negotiating → Casting` transition is observed **locally** by the sender's
 ```mermaid
   stateDiagram-v2
     [*] --> Ready: WS opens (/v1/receiver) / SERVER_HELLO(joinCode) -> CLIENT_LIST_UPDATE
+    [*] --> Rejected: WS opens while another receiver is connected / ERROR(INVALID_STATE)
+    Rejected --> [*]: WS closes (1008)
 
     Ready --> Ready: CLIENT_LIST_UPDATE (roster changes)
     Ready --> Ready: STATE_UPDATE (state / activeClientId changes)
@@ -491,7 +496,7 @@ A full session, end to end, for one classroom (one `receiver`, two candidate sen
 
 2. **Anna connects and joins.**
    `sender(Anna) → server`: WS open on `/v1`.
-   `server → sender(Anna)`: `SERVER_HELLO` (`joinCode: null`, `isBusy: false`, `receiverConnected: true`).
+   `server → sender(Anna)`: `SERVER_HELLO` (`isBusy: false`, `receiverConnected: true`).
    `sender(Anna) → server`: `JOIN_REQUEST` (`joinCode: "7392"`, `clientName: "Anna's Laptop"`).
    `server → sender(Anna)`: `JOIN_RESPONSE` (`success: true`).
    `server → receiver`: `CLIENT_LIST_UPDATE` (`clients: [Anna]`).
