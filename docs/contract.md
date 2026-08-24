@@ -14,7 +14,7 @@ This specification documents the data schemas, connection endpoints, and event s
 * **Data Format:** JSON
 * **Versioning:** URI Path Based (`/v1`, `/v2`)
 * **Role:** The connection's role (`sender` vs `receiver`) is fixed by which path it connects to and cannot change for the lifetime of that connection. This is why role has to be resolved at the URL level rather than by an initial message — `SERVER_HELLO` (§3.1.1), the very first message, already differs by role.
-* **Signaling only:** The server never terminates or inspects the WebRTC media session. `OFFER`/`ANSWER`/`ICE_CANDIDATE` payloads are forwarded byte-for-byte between the Sender and the Receiver browsers, which negotiate and hold the actual peer-to-peer connection directly with each other (§3.2, §5).
+* **Signaling only:** The server never terminates or inspects the WebRTC media session. The server forwards the contract-defined SDP and ICE field values without interpreting or modifying their contents. The Sender and Receiver browsers negotiate and hold the actual peer-to-peer connection directly with each other (§3.2, §5).
 * **Why `wss` and not `ws`:** the sender's page calls `navigator.mediaDevices.getDisplayMedia()` to capture the screen, which browsers only allow in a secure context (`https`, or `localhost`). A page served over plain `http` would have that call silently blocked. Once the sender's page is `https`, the browser's mixed-content policy forbids it from opening a plain `ws://` connection — so the signaling socket has to be `wss` too. Strictly, this only *forces* it for the sender path; the `receiver` never calls `getDisplayMedia()` and could stay on plain `ws`/`http`. Running both over `wss` is simpler to operate (one cert, one config) and is the default here; the asymmetric option is only worth it if minimizing the number of devices that have to click through a certificate warning matters more than that simplicity.
 * **Certificate:** there's no publicly-trusted certificate for a bare LAN IP. Expect a self-signed certificate, which means each device clicks through a one-time browser warning on first connect. If classroom machines are department-managed, installing that self-signed CA as trusted on them removes the warning there; student laptops connecting as senders will still see it once per device.
 
@@ -162,7 +162,6 @@ As of this revision the server relays this whole section between a Sender and th
 | `clientId` | string | Must reference a currently joined sender. |
 
 Server handling:
-- If no `receiver` is currently connected on the server: `ERROR` (`NO_RECEIVER`) to the receiver — a defensive check, since in practice this message can only originate from a receiver connection.
 - If `clientId` does not reference a currently joined sender (e.g. it just disconnected): `ERROR` (`INVALID_STATE`) to the receiver.
 - If the server is not currently `IDLE` (i.e. already `PENDING` or `ACTIVE`): `ERROR` (`BUSY`) to the receiver — a selection or a cast is already in flight.
 - Otherwise: server transitions `IDLE` → `PENDING`, records the referenced sender as the *pending* client, sends `CAST_REQUEST` to it, and broadcasts `STATE_UPDATE` (§3.3.11).
@@ -180,11 +179,11 @@ Sent on a `sender` connection: rejected with `ERROR` (`INVALID_STATE`).
 }
 ```
 
-The sender reacts to `CAST_REQUEST` exactly as if the local user had clicked "Start Casting" — it proceeds to send an `OFFER`.
+The sender may accept `CAST_REQUEST` and proceed to send an `OFFER`, or reject it by sending `STOP_CASTING` while the session is still `PENDING`.
 
 6. `OFFER`
  - Direction: Sender $\rightarrow$ Server $\rightarrow$ Receiver (relayed)
- - Trigger: Sender initiates WebRTC P2P stream negotiation after the user clicks "Start Casting", or automatically upon receiving `CAST_REQUEST`.
+ - Trigger: Sender initiates WebRTC P2P stream negotiation after the user clicks "Start Casting", or after accepting `CAST_REQUEST`.
 
 ```json
 // Sender -> Server
@@ -210,7 +209,7 @@ The sender reacts to `CAST_REQUEST` exactly as if the local user had clicked "St
 
 | Field | Type | Constraints |
 |---|---|---|
-| `sdp` | string | Valid SDP offer body per RFC 8866. Forwarded byte-for-byte by the server — it is never parsed or modified. |
+| `sdp` | string | Valid SDP offer body per RFC 8866. The server forwards its value without interpreting or modifying its contents. |
 | `clientId` | string | Added by the server only on the Server → Receiver relay; identifies the offering sender. Not present on the original Sender → Server message (the sender is already identified by its own connection). |
 
 **Server handling of concurrent `OFFER`s:** the server treats "who becomes the negotiating pair" atomically and serially — offers are processed in arrival order, against the server's own session state (`IDLE` / `PENDING` / `ACTIVE`, see §4.3). The server itself never generates an `ANSWER`; it only decides whether to relay the offer on.
@@ -246,7 +245,7 @@ The sender reacts to `CAST_REQUEST` exactly as if the local user had clicked "St
 
 | Field | Type | Constraints |
 |---|---|---|
-| `sdp` | string | Valid SDP answer body per RFC 8866. Forwarded byte-for-byte — the server does not generate, parse, or modify it. |
+| `sdp` | string | Valid SDP answer body per RFC 8866. The server forwards its value without interpreting or modifying its contents. |
 
 An `ANSWER` is only accepted from the `receiver` connection while the session is `ACTIVE`; otherwise `ERROR` (`INVALID_STATE`).
 
@@ -267,7 +266,7 @@ An `ANSWER` is only accepted from the `receiver` connection while the session is
 
 | Field | Type | Constraints |
 |---|---|---|
-| `candidate` | string | Valid ICE candidate line per RFC 5245. Forwarded verbatim. |
+| `candidate` | string | Valid ICE candidate line per RFC 5245. The server forwards its value without interpreting or modifying its contents. |
 | `sdpMid` | string | Optional. Media stream identification tag; omitted when the sender's WebRTC stack doesn't provide one for a given candidate (per RFC 8829, at least one of `sdpMid`/`sdpMLineIndex` must be present). |
 | `sdpMLineIndex` | integer | Optional. `>= 0` when present; same omission rule as `sdpMid`. |
 
@@ -293,10 +292,10 @@ Server handling: only valid while the session is `ACTIVE`. On receipt, the serve
 10. `STOP_CASTING`
 - Direction: Bidirectional (Sender/Receiver $\leftrightarrow$ Server)
 - Trigger:
-  - Sender → Server: sent when the active (`ACTIVE`) sender clicks "Stop Casting" locally.
+  - Sender → Server: sent when the selected sender rejects a `CAST_REQUEST` while `PENDING`, or when the active sender clicks "Stop Casting" locally while `ACTIVE`.
   - Receiver → Server: sent when the operator clicks "Stop" in the Receiver UI, for a `PENDING` selection or an `ACTIVE` cast (whether still negotiating or already streaming) — cancelling before it ever offers, mid-negotiation, or once already streaming are all allowed.
-  - Server → Sender: relays a stop telling the sender to abandon an `OFFER` it hasn't sent yet (`PENDING`), or to tear down its `RTCPeerConnection` (`ACTIVE`) — as a result of either of the above, the pending timeout below, or a `PEER_CONNECTION_FAILED` reported by the receiver.
-  - Server → Receiver: relays a stop telling the receiver to tear down its `RTCPeerConnection` — when the *sender* stops, disconnects, or reports `PEER_CONNECTION_FAILED`.
+  - Server → Sender: relays a stop telling the sender to abandon an `OFFER` it hasn't sent yet (`PENDING`), or to tear down its `RTCPeerConnection` (`ACTIVE`) — as a result of the receiver cancelling or disconnecting, the pending timeout below, or a `PEER_CONNECTION_FAILED` reported by the receiver.
+  - Server → Receiver: relays a stop telling the receiver to tear down its `RTCPeerConnection` — when the active sender stops, disconnects, or reports `PEER_CONNECTION_FAILED`.
 
 ```json
 {
@@ -304,6 +303,8 @@ Server handling: only valid while the session is `ACTIVE`. On receipt, the serve
   "payload": {}
 }
 ```
+
+If the selected sender sends `STOP_CASTING` while the session is `PENDING`, the server treats it as rejection of `CAST_REQUEST`, transitions to `IDLE`, and broadcasts `STATE_UPDATE`. No `STOP_CASTING` is relayed to the receiver because it has not received an `OFFER` or created an `RTCPeerConnection` yet.
 
 If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the server replies with `ERROR` (`INVALID_STATE`) — including when this happens because a concurrent `PEER_CONNECTION_FAILED` or another `STOP_CASTING` already tore the session down first; see the concurrent-teardown note under `PEER_CONNECTION_FAILED` (§3.2.9).
 
@@ -321,13 +322,13 @@ If a `receiver` sends `STOP_CASTING` while the server is already `IDLE`, the ser
 - The `joinCode` is preserved (§3.1.1), so a reconnecting — or a new — receiver shows the same code, and already-`Joined` senders never need to re-`JOIN_REQUEST`.
 - When a `receiver` (re)connects afterward, it gets `SERVER_HELLO` with the preserved `joinCode`, then `CLIENT_LIST_UPDATE` with the (unchanged) roster; the server also sends the senders `STATE_UPDATE` (`receiverConnected: true`).
 
-**Pending timeout:** if the pending sender hasn't sent an `OFFER` within **20 seconds** of receiving `CAST_REQUEST` (exact value is a tunable server setting), the server auto-cancels the selection — the same effect as the receiver sending `STOP_CASTING` for it: `PENDING` → `IDLE`, `STOP_CASTING` sent to the (still-connected) pending sender so it abandons any in-flight `OFFER` attempt, and `STATE_UPDATE` broadcast as above. The timeout is purely a safety net for an unresponsive sender; a clean disconnect is handled immediately by the bullet above, without waiting it out.
+**Pending timeout:** if the pending sender hasn't sent an `OFFER` within **45 seconds** of receiving `CAST_REQUEST` (exact value is a tunable server setting), the server auto-cancels the selection — the same effect as the receiver sending `STOP_CASTING` for it: `PENDING` → `IDLE`, `STOP_CASTING` sent to the (still-connected) pending sender so it abandons any in-flight `OFFER` attempt, and `STATE_UPDATE` broadcast as above. The timeout is purely a safety net for an unresponsive sender; a clean disconnect is handled immediately by the bullet above, without waiting it out.
 
 11. `STATE_UPDATE`
 - Direction: Server $\rightarrow$ All Connected Clients (broadcast), with a payload shaped by the recipient's role
 - Trigger: Sent whenever the server's session state changes between `IDLE`, `PENDING`, and `ACTIVE` (§4.3) — including as a result of a `SELECT_CLIENT`, an `OFFER`, a `PEER_CONNECTION_FAILED`, a `STOP_CASTING`, an abrupt sender disconnect, or a pending timeout — and whenever a `receiver` connects or disconnects (for the `receiverConnected` flag).
 
-Sender-facing broadcasts only go to currently `Joined` sender connections — a `sender` connection that hasn't joined yet (still `Connected`, per §4.1) gets its one-time snapshot from `SERVER_HELLO` but is not on the `STATE_UPDATE` broadcast list, since it isn't eligible to `OFFER` regardless of session state.
+Sender-facing broadcasts go to every sender connection with an open WebSocket, including senders that have not completed `JOIN_REQUEST` yet. This keeps their `isBusy` and `receiverConnected` values current before they join. `CLIENT_LIST_UPDATE` remains limited to senders that have completed the join successfully (§3.3.12).
 
 ```json
 // Sent to sender connections
@@ -402,7 +403,7 @@ Sender-facing broadcasts only go to currently `Joined` sender connections — a 
 | `UNSUPPORTED_TYPE` | 400 Bad Request | Sent WebSocket `type` field is not recognized by the server. |
 | `INVALID_STATE` | 409 Conflict | Message sent out of the required order (e.g. `OFFER` before a successful `JOIN_REQUEST`, a `JOIN_REQUEST` from a sender that's already `Joined`, `ANSWER`/`ICE_CANDIDATE` with no negotiation in progress, `PEER_CONNECTION_FAILED` with nothing to fail), sent on a connection role that doesn't support it (e.g. `JOIN_REQUEST` on a `receiver` connection, `SELECT_CLIENT`/`ANSWER` sent from a `sender` connection), a `SELECT_CLIENT`/`STOP_CASTING` that no longer matches reality (unknown `clientId`, or nothing to stop or cancel), or an additional receiver connection is attempted while one is already connected. |
 | `BUSY` | 409 Conflict | Another sender is already the pending or active one. Applies to `OFFER` and to `SELECT_CLIENT`. |
-| `NO_RECEIVER` | 503 Service Unavailable | A spontaneous `OFFER` (or, less commonly, a `SELECT_CLIENT`) can't be relayed because no `receiver` connection is currently open. |
+| `NO_RECEIVER` | 503 Service Unavailable | A spontaneous `OFFER` can't be relayed because no `receiver` connection is currently open. |
 
 Note: join failures are reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`, `NO_RECEIVER`, or `INVALID_CLIENT_NAME`), not via `ERROR` — they are direct replies to `JOIN_REQUEST`, so they don't need a second, competing event type.
 
@@ -418,10 +419,12 @@ Note: join failures are reported via `JOIN_RESPONSE` (`reason: INVALID_CODE`, `N
 
     Connected --> Connected: JOIN_REQUEST -> JOIN_RESPONSE(success:false)
     Connected --> Joined: JOIN_REQUEST -> JOIN_RESPONSE(success:true)
+    Connected --> Connected: STATE_UPDATE (busy / receiver availability changes)
     Connected --> [*]: WS closes (not joined)
 
-    Joined --> Negotiating: OFFER (User clicks Start OR via CAST_REQUEST)
-    Joined --> Joined: OFFER (server not IDLE: PENDING or ACTIVE) -> ERROR(BUSY)
+    Joined --> Joined: CAST_REQUEST rejected with STOP_CASTING
+    Joined --> Negotiating: OFFER (User clicks Start OR accepts CAST_REQUEST)
+    Joined --> Joined: OFFER (PENDING for another sender or ACTIVE) -> ERROR(BUSY)
     Joined --> Joined: OFFER (no receiver connected) -> ERROR(NO_RECEIVER)
 
     Negotiating --> Casting: [local] ANSWER relayed + ICE_CANDIDATE exchange + local RTCPeerConnection reaches "connected"
@@ -461,7 +464,7 @@ The `receiver` connection has no `Joined`/`Negotiating`/`Casting` states of its 
 
 ### 4.3 Session state (server-wide)
 
-This is the server's own internal state — not tied to any single connection — that both `STATE_UPDATE` payloads (§3.3.11) reflect. `ACTIVE` covers both "still negotiating" and "already streaming": from the server's point of view the two look identical (relay `ICE_CANDIDATE`, reject other `OFFER`s with `BUSY`, drop back to `IDLE` on `STOP_CASTING` or `PEER_CONNECTION_FAILED`), so there's no separate state for it — a receiver that wants to show "connecting…" vs "casting" in its UI can tell the difference locally from its own `RTCPeerConnection`, without the server needing to track it.
+This is the server's own internal state — not tied to any single connection — that both `STATE_UPDATE` payloads (§3.3.11) reflect. `ACTIVE` covers both "still negotiating" and "already streaming": from the server's point of view the two look identical (relay `ICE_CANDIDATE`, reject subsequent `OFFER`s with `BUSY`, drop back to `IDLE` on `STOP_CASTING` or `PEER_CONNECTION_FAILED`), so there's no separate state for it — a receiver that wants to show "connecting…" vs "casting" in its UI can tell the difference locally from its own `RTCPeerConnection`, without the server needing to track it.
 
 ```mermaid
   stateDiagram-v2
@@ -472,11 +475,11 @@ This is the server's own internal state — not tied to any single connection �
     IDLE --> IDLE: spontaneous OFFER, no receiver connected -> ERROR(NO_RECEIVER)
 
     PENDING --> ACTIVE: OFFER from the pending sender -> relayed to receiver
-    PENDING --> IDLE: timeout (20s) / pending sender disconnects / receiver cancels (STOP_CASTING) / receiver disconnects
+    PENDING --> IDLE: timeout (45s) / selected sender rejects (STOP_CASTING) / pending sender disconnects / receiver cancels (STOP_CASTING) / receiver disconnects
     PENDING --> PENDING: OFFER from a different sender -> ERROR(BUSY)
 
     ACTIVE --> IDLE: STOP_CASTING (from sender or receiver) / PEER_CONNECTION_FAILED (from either side) / active sender disconnects / receiver disconnects
-    ACTIVE --> ACTIVE: OFFER from a different sender -> ERROR(BUSY)
+    ACTIVE --> ACTIVE: any OFFER -> ERROR(BUSY)
 ```
 
 ## 5. Media Stream Specification
@@ -508,11 +511,13 @@ A full session, end to end, for one classroom (one `receiver`, two candidate sen
    `receiver → server`: `SELECT_CLIENT` (`clientId: Anna`).
    Server `IDLE → PENDING`.
    `server → sender(Anna)`: `CAST_REQUEST`.
-   `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: true`) — Bartek can't offer during the pending window either.
+   `server → sender(Anna)` and `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: true`) — no other offer can start during the pending window.
    `server → receiver`: `STATE_UPDATE` (`state: "PENDING"`, `activeClientId: Anna`).
    *(If Bartek sends an `OFFER` any time in this window: `server → sender(Bartek)`: `ERROR(BUSY)`.)*
 
-   *(Variant — nobody offers: if Anna's device never sends `OFFER` within 20s, or the operator clicks Stop before it does, the server cancels: `PENDING → IDLE`, `server → sender(Anna)`: `STOP_CASTING`, and `STATE_UPDATE` broadcasts as in step 7. No `OFFER` is ever relayed.)*
+   *(Variant — nobody offers: if Anna's device never sends `OFFER` within 45s, or the operator clicks Stop before it does, the server cancels: `PENDING → IDLE`, `server → sender(Anna)`: `STOP_CASTING`, and `STATE_UPDATE` broadcasts as in step 7. No `OFFER` is ever relayed.)*
+
+   *(Variant — Anna rejects the request: `sender(Anna) → server`: `STOP_CASTING`. The server returns `PENDING → IDLE` and broadcasts `STATE_UPDATE`; no `OFFER` or `STOP_CASTING` is sent to the receiver.)*
 
 5. **Anna's device offers; the server relays it to the receiver.**
    `sender(Anna) → server`: `OFFER` (`sdp: ...`).
@@ -532,7 +537,7 @@ A full session, end to end, for one classroom (one `receiver`, two candidate sen
    `sender(Anna) → server`: `STOP_CASTING`.
    Server `ACTIVE → IDLE`.
    `server → receiver`: `STOP_CASTING` (tears down the receiver's `RTCPeerConnection`).
-   `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: false`).
+   `server → sender(Anna)` and `server → sender(Bartek)`: `STATE_UPDATE` (`isBusy: false`).
    `server → receiver`: `STATE_UPDATE` (`state: "IDLE"`, `activeClientId: null`).
 
 8. **The receiver drops mid-session** (e.g. the projector's browser tab reloads), while Anna happens to be `ACTIVE` (already streaming):
