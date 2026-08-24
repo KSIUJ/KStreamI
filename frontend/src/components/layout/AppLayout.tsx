@@ -3,15 +3,16 @@ import { Tv, Sun, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/logo"
 
-export type StreamStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
+export type ViewStatus = "DISCONNECTED" | "JOINING" | "LOBBY" | "STREAMING"
 
 interface AppLayoutProps {
   children: ReactNode
-  status: StreamStatus
+  status: ViewStatus
   userId: string
+  leftPanel?: ReactNode
 }
 
-export function AppLayout({ children, status, userId }: AppLayoutProps) {
+export function AppLayout({ children, status, userId, leftPanel }: AppLayoutProps) {  
   // Punkty skosu (topX = góra 40%, bottomX = dół 35%)
   const topX = 40;
   const bottomX = 35;
@@ -25,13 +26,19 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
   return (
     <div className="min-h-screen text-slate-100 flex bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 relative overflow-hidden">
       
-      {/* 1. LEWY PANEL Z LOGIEM (Tylko na dużych ekranach lg:) */}
+      {/* 1. LEWY PANEL */}
       <div 
         className="hidden lg:block absolute inset-0 z-30 bg-gradient-to-b from-slate-900/90 via-slate-900/80 to-slate-950/90 backdrop-blur-md pointer-events-none"
         style={{ clipPath: clipLeft }}
       >
         <div className="w-[37.5%] h-full flex items-center justify-center pl-[3vw] pr-[1vw]">
-          <Logo className="h-[105vh] w-auto scale-110 transform translate-x-[3vw] object-contain" />
+          {leftPanel ? (
+            <div className="w-full h-full pointer-events-auto">
+              {leftPanel}
+            </div>
+          ) : (
+            <Logo className="h-[105vh] w-auto scale-110 transform translate-x-[3vw] object-contain" />
+          )}
         </div>
       </div>
 
@@ -105,7 +112,9 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
               {status === "STREAMING" && (
                 <>
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                  <span className="text-red-400 font-semibold">Na żywo</span>
+                  <span className="text-red-400 font-semibold">
+                    Podgląd lokalny
+                  </span>
                 </>
               )}
             </div>
@@ -117,7 +126,11 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
           className="p-6 flex-1 flex flex-col justify-center items-center w-full lg:[padding-left:var(--pl)]"
           style={{ "--pl": mainPadding } as React.CSSProperties}
         >
-          <div className="w-full max-w-md">
+          <div
+            className={`w-full ${
+              status === "STREAMING" ? "max-w-4xl" : "max-w-md"
+            }`}
+          >
             {children}
           </div>
         </main>
@@ -130,7 +143,8 @@ export function AppLayout({ children, status, userId }: AppLayoutProps) {
           <span>
             {status === "DISCONNECTED" && "Oczekiwanie na akcję użytkownika"}
             {status === "LOBBY" && `Tymczasowe ID: ${userId}`}
-            {status === "STREAMING" && `Tymczasowe ID: ${userId} | 60 FPS`}
+            {status === "STREAMING" &&
+              `Tymczasowe ID: ${userId} | Przechwytywanie lokalne`}
           </span>
         </footer>
 
