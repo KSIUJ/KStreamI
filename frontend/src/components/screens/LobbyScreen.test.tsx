@@ -10,7 +10,9 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
       <LobbyScreen 
         serverBusy={false} 
         emitMockEvent={vi.fn()} 
-        onStartStreaming={vi.fn()} 
+        captureStatus="idle"
+        captureError={null}
+        onStartCapture={vi.fn()} 
         onDisconnect={vi.fn()} 
       />
     );
@@ -26,7 +28,9 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
       <LobbyScreen 
         serverBusy={true} 
         emitMockEvent={vi.fn()} 
-        onStartStreaming={vi.fn()} 
+        captureStatus="idle"
+        captureError={null}
+        onStartCapture={vi.fn()} 
         onDisconnect={vi.fn()} 
       />
     );
@@ -39,13 +43,15 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
 
   it('wywołuje onDisconnect po kliknięciu "Rozłącz"', async () => {
     const user = userEvent.setup();
-    const mockOnDisconnect = vi.fn(); // Nasz szpieg
+    const mockOnDisconnect = vi.fn(); 
 
     render(
       <LobbyScreen 
         serverBusy={false} 
         emitMockEvent={vi.fn()} 
-        onStartStreaming={vi.fn()} 
+        captureStatus="idle"
+        captureError={null}
+        onStartCapture={vi.fn()} 
         onDisconnect={mockOnDisconnect} 
       />
     );
@@ -56,7 +62,7 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     expect(mockOnDisconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('wywołuje onStartStreaming po wciśnięciu klawisza Enter (gdy serwer jest wolny)', async () => {
+  it('wywołuje onStartCapture po kliknięciu przycisku (gdy serwer jest wolny)', async () => {
     const user = userEvent.setup();
     const mockOnStart = vi.fn();
 
@@ -64,17 +70,20 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
       <LobbyScreen 
         serverBusy={false} 
         emitMockEvent={vi.fn()} 
-        onStartStreaming={mockOnStart} 
+        captureStatus="idle"
+        captureError={null}
+        onStartCapture={mockOnStart} 
         onDisconnect={vi.fn()} 
       />
     );
 
-    await user.keyboard('{Enter}');
+    const startButton = screen.getByRole('button', { name: /rozpocznij udostępnianie/i });
+    await user.click(startButton);
 
     expect(mockOnStart).toHaveBeenCalledTimes(1);
   });
 
-  it('ignoruje wciśnięcie klawisza Enter, gdy serwer jest zajęty', async () => {
+  it('ignoruje kliknięcie przycisku start, gdy serwer jest zajęty', async () => {
     const user = userEvent.setup();
     const mockOnStart = vi.fn();
 
@@ -82,14 +91,36 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
       <LobbyScreen 
         serverBusy={true} 
         emitMockEvent={vi.fn()} 
-        onStartStreaming={mockOnStart} 
+        captureStatus="idle"
+        captureError={null}
+        onStartCapture={mockOnStart} 
         onDisconnect={vi.fn()} 
       />
     );
 
-    await user.keyboard('{Enter}');
-
+    const startButton = screen.getByRole('button', { name: /rozpocznij udostępnianie/i });
+    expect(startButton).toBeDisabled();
+    
+    // Próba kliknięcia w disabled button
+    await user.click(startButton);
     expect(mockOnStart).not.toHaveBeenCalled();
+  });
+
+  it('wyświetla komunikat błędu, jeśli captureError jest przekazany', () => {
+    const errorMessage = "Odmowa dostępu do ekranu";
+
+    render(
+      <LobbyScreen 
+        serverBusy={false} 
+        emitMockEvent={vi.fn()} 
+        captureStatus="idle"
+        captureError={errorMessage}
+        onStartCapture={vi.fn()} 
+        onDisconnect={vi.fn()} 
+      />
+    );
+
+    expect(screen.getByText(errorMessage)).toBeInTheDocument();
   });
 
 });

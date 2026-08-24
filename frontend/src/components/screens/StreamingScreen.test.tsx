@@ -3,27 +3,26 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StreamingScreen } from './StreamingScreen';
 
+const mockStream = {} as MediaStream;
+
 describe('StreamingScreen - Testy Ekranu Nadawania', () => {
 
   it('wyświetla komunikat o udostępnianiu i przycisk kończący', () => {
-    render(<StreamingScreen onStopStreaming={vi.fn()} />);
-
-    const heading = screen.getByText('Twój ekran jest widoczny');
+    render(<StreamingScreen stream={mockStream} onStopCapture={vi.fn()} />);
+    const heading = screen.getByText('Ekran jest przechwytywany lokalnie');
     expect(heading).toBeInTheDocument();
-
-    const stopButton = screen.getByRole('button', { name: /zakończ udostępnianie/i });
+    const stopButton = screen.getByRole('button', { name: /zatrzymaj przechwytywanie/i });
     expect(stopButton).toBeInTheDocument();
   });
 
-  it('wywołuje onStopStreaming po kliknięciu czerwonego przycisku', async () => {
+  it('wywołuje onStopCapture po kliknięciu czerwonego przycisku', async () => {
     const user = userEvent.setup();
-    const mockOnStopStreaming = vi.fn(); 
-    render(<StreamingScreen onStopStreaming={mockOnStopStreaming} />);
-
-    const stopButton = screen.getByRole('button', { name: /zakończ udostępnianie/i });
+    const mockOnStopCapture = vi.fn(); 
+    render(<StreamingScreen stream={mockStream} onStopCapture={mockOnStopCapture} />);
+    const stopButton = screen.getByRole('button', { name: /zatrzymaj przechwytywanie/i });
     await user.click(stopButton);
 
-    expect(mockOnStopStreaming).toHaveBeenCalledTimes(1);
+    expect(mockOnStopCapture).toHaveBeenCalledTimes(1);
   });
 
 });
