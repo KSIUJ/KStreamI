@@ -12,8 +12,15 @@ function VideoPlayer({ stream, className }: { stream: MediaStream | null, classN
     if (!videoElement) return
 
     if (stream) {
-      videoElement.srcObject = stream
-      videoElement.play().catch(e => console.log("Oczekiwanie na odtwarzanie...", e))
+      if (videoElement.srcObject !== stream) {
+        videoElement.srcObject = stream;
+      }
+      
+      videoElement.play().catch(e => {
+        if (e.name !== "AbortError") {
+          console.error("Błąd odtwarzania wideo:", e);
+        }
+      });
     } else {
       videoElement.srcObject = null
     }
