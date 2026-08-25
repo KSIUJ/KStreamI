@@ -9,7 +9,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={false} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={null}
         onStartCapture={vi.fn()} 
@@ -27,7 +26,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={true} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={null}
         onStartCapture={vi.fn()} 
@@ -48,7 +46,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={false} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={null}
         onStartCapture={vi.fn()} 
@@ -69,7 +66,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={false} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={null}
         onStartCapture={mockOnStart} 
@@ -90,7 +86,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={true} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={null}
         onStartCapture={mockOnStart} 
@@ -112,7 +107,6 @@ describe('LobbyScreen - Testy Ekranu Poczekalni', () => {
     render(
       <LobbyScreen 
         serverBusy={false} 
-        emitMockEvent={vi.fn()} 
         captureStatus="idle"
         captureError={errorMessage}
         onStartCapture={vi.fn()} 
