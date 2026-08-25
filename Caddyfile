@@ -1,0 +1,18 @@
+{
+	auto_https disable_redirects
+	default_sni {$KSTREAMI_HOST}
+}
+
+https://{$KSTREAMI_HOST}:8080 {
+	tls internal
+
+	@backend path /v1 /v1/* /api /api/* /docs /docs/* /openapi.json
+
+	handle @backend {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+}

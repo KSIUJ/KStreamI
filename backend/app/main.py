@@ -1,24 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+from .api.signaling import router
 
+
+app = FastAPI()
+ 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.get("/")
-async def root():
-    return {"message": "Hello KStreamI"}
+app.include_router(router)
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
-
 
 app_state = {
     "maintenance_mode": False

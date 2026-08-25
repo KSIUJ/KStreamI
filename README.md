@@ -57,7 +57,55 @@ To stop and remove the containers, run:
 docker compose down
 ```
 
-##  Testing
+### Secure LAN run
+
+To test screen capture and signaling from another device on the same network,
+copy the example environment file and set `KSTREAMI_HOST` to the server's LAN
+IP address:
+
+```bash
+cp .env.example .env
+```
+
+For example:
+
+```dotenv
+KSTREAMI_HOST=192.168.1.100
+```
+
+Then start the application behind the Caddy HTTPS/WSS gateway:
+
+```bash
+docker compose -f compose.wss.yaml up --build
+```
+
+The application and health check are available at:
+
+- Application: `https://<KSTREAMI_HOST>:8080`
+- API health check: `https://<KSTREAMI_HOST>:8080/api/health`
+
+Caddy uses its internal certificate authority for LAN addresses. A browser that
+does not trust this authority will display a certificate warning on the first
+visit. For controlled development testing, accept the warning or install
+Caddy's root certificate on the test device.
+
+To stop and remove the secure deployment, run:
+
+```bash
+docker compose -f compose.wss.yaml down
+```
+
+## Tests
+
+### Backend
+
+Run the backend tests from the project root:
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+(cd backend && python -m pytest -v)
+```
+### Frontend
 
 This project uses **Vitest** and **React Testing Library**.
 To run tests in /frontend:
