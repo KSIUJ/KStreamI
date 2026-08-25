@@ -95,7 +95,9 @@ To stop and remove the secure deployment, run:
 docker compose -f compose.wss.yaml down
 ```
 
-### Tests
+## Tests
+
+### Backend
 
 Run the backend tests from the project root:
 
@@ -103,6 +105,12 @@ Run the backend tests from the project root:
 python -m pip install -r backend/requirements-dev.txt
 (cd backend && python -m pytest -v)
 ```
+### Frontend
+
+This project uses **Vitest** and **React Testing Library**.
+To run tests in /frontend:
+1. `npm install`
+2. `npm run test`
 
 ## Project structure
 _TBD_
