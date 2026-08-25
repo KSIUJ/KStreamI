@@ -3,9 +3,12 @@ from ..core import messages as msg
 from ..core.session import PENDING_TIMEOUT_SECONDS, Session, SessionState
 import asyncio
 import json
+import logging
 
 router = APIRouter()
 session = Session()
+logger = logging.getLogger(__name__)
+CLIENT_NAME_MAX_LENGTH = 64
 
 KNOWN_TYPES = {
     "JOIN_REQUEST",
@@ -17,26 +20,63 @@ KNOWN_TYPES = {
     "STOP_CASTING",
 }
 
+
+def normalizeClientName(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    if not normalized or len(normalized) > CLIENT_NAME_MAX_LENGTH:
+        return None
+
+    return normalized
+
+
+async def sendJsonBestEffort(
+    websocket: WebSocket, message: dict, recipient: str
+) -> None:
+    try:
+        await websocket.send_json(message)
+    except Exception:
+        logger.warning(
+            "Failed to send %s to %s",
+            message.get("type", "message"),
+            recipient,
+            exc_info=True,
+        )
+
+
 async def broadcastSenderState():
-    for s in session.senders.values():
-        if s["joined"]:
-            await s["ws"].send_json(
-                msg.stateUpdateSender(session.isBusy(), session.receiverConnected())
-            )
+    message = msg.stateUpdateSender(session.isBusy(), session.receiverConnected())
+    for clientId, s in list(session.senders.items()):
+        await sendJsonBestEffort(s["ws"], message, clientId)
+
 
 async def broadcastReceiverState():
     if session.wsRec:
-        await session.wsRec.send_json(
-            msg.stateUpdateReceiver(session.state.value, session.activeClientId)
+        await sendJsonBestEffort(
+            session.wsRec,
+            msg.stateUpdateReceiver(session.state.value, session.activeClientId),
+            "receiver",
         )
 
 
 async def cancelToIdle(notifySender: bool, notifyReceiver: bool):
-    if notifySender and session.activeClientId in session.senders:
-        await session.senders[session.activeClientId]["ws"].send_json(msg.stopCasting())
-    if notifyReceiver and session.state == SessionState.ACTIVE and session.wsRec:
-        await session.wsRec.send_json(msg.stopCasting())
-    session.resetIdle()
+    activeClientId = session.activeClientId
+    previousState = session.state
+
+    try:
+        if notifySender and activeClientId in session.senders:
+            await sendJsonBestEffort(
+                session.senders[activeClientId]["ws"],
+                msg.stopCasting(),
+                activeClientId,
+            )
+        if notifyReceiver and previousState == SessionState.ACTIVE and session.wsRec:
+            await sendJsonBestEffort(session.wsRec, msg.stopCasting(), "receiver")
+    finally:
+        session.resetIdle()
+
     await broadcastSenderState()
     await broadcastReceiverState()
 
@@ -62,6 +102,15 @@ async def receiveEnvelope(websocket: WebSocket) -> dict | None:
         await websocket.send_json(msg.error("MALFORMED_ENVELOPE", "Missing type/payload."))
         return None
 
+    if not isinstance(data["type"], str) or not isinstance(data["payload"], dict):
+        await websocket.send_json(
+            msg.error(
+                "MALFORMED_ENVELOPE",
+                "Type must be a string and payload must be an object.",
+            )
+        )
+        return None
+
     if data["type"] not in KNOWN_TYPES:
         await websocket.send_json(msg.error("UNSUPPORTED_TYPE", f"Unknown type {data['type']!r}."))
         return None
@@ -72,12 +121,21 @@ async def receiveEnvelope(websocket: WebSocket) -> dict | None:
 @router.websocket("/v1/receiver")
 async def ws_rec(websocket: WebSocket):
     await websocket.accept()
-    clientId = session.nextClientId()
+
+    if session.wsRec is not None:
+        await websocket.send_json(
+            msg.error("INVALID_STATE", "Receiver already connected.")
+        )
+        await websocket.close(code=1008)
+        return
+
+    clientId = session.nextReceiverId()
     session.wsRec = websocket
     joinCode = session.ensureJoinCode()
 
     await websocket.send_json(msg.serverHelloReceiver(clientId, joinCode))
     await websocket.send_json(msg.clientListUpdate(session.senders))
+    await broadcastSenderState()
 
     try:
         while True:
@@ -142,18 +200,23 @@ async def ws_rec(websocket: WebSocket):
         session.wsRec = None
         if session.state != SessionState.IDLE:
             await cancelToIdle(notifySender=True, notifyReceiver=False)
-        await broadcastSenderState()  # receiverConnected: false
+        else:
+            await broadcastSenderState()  # receiverConnected: false
         session.clearJoinCodeIfEmpty()
 
 
 @router.websocket("/v1")
 async def ws_sender(websocket: WebSocket):
     await websocket.accept()
-    clientId = session.nextClientId()
+    clientId = session.nextSenderId()
     session.senders[clientId] = {"ws": websocket, "name": None, "joined": False}
 
     await websocket.send_json(
-        msg.serverHelloSender(clientId, session.receiverConnected())
+        msg.serverHelloSender(
+            clientId,
+            session.isBusy(),
+            session.receiverConnected(),
+        )
     )
 
     try:
@@ -167,14 +230,19 @@ async def ws_sender(websocket: WebSocket):
             if msgType == "JOIN_REQUEST":
                 alreadyJoined = session.senders[clientId]["joined"]
                 codeValid = payload.get("joinCode") == session.joinCode
+                clientName = normalizeClientName(payload.get("clientName"))
 
                 if alreadyJoined:
                     await websocket.send_json(msg.error("INVALID_STATE", "Already joined."))
+                elif not session.receiverConnected():
+                    await websocket.send_json(msg.joinResponse(False, "NO_RECEIVER"))
                 elif not codeValid:
                     await websocket.send_json(msg.joinResponse(False, "INVALID_CODE"))
+                elif clientName is None:
+                    await websocket.send_json(msg.joinResponse(False, "INVALID_CLIENT_NAME"))
                 else:
                     session.senders[clientId]["joined"] = True
-                    session.senders[clientId]["name"] = payload.get("clientName", "")
+                    session.senders[clientId]["name"] = clientName
                     await websocket.send_json(msg.joinResponse(True))
                     if session.wsRec:
                         await session.wsRec.send_json(msg.clientListUpdate(session.senders))
@@ -242,5 +310,9 @@ async def ws_sender(websocket: WebSocket):
         if wasActive:
             await cancelToIdle(notifySender=False, notifyReceiver=True)
         if wasJoined and session.wsRec:
-            await session.wsRec.send_json(msg.clientListUpdate(session.senders))
+            await sendJsonBestEffort(
+                session.wsRec,
+                msg.clientListUpdate(session.senders),
+                "receiver",
+            )
         session.clearJoinCodeIfEmpty()

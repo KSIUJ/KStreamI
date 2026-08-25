@@ -3,7 +3,7 @@ import secrets
 from enum import Enum
 from fastapi import WebSocket
 
-PENDING_TIMEOUT_SECONDS = 20
+PENDING_TIMEOUT_SECONDS = 45
 
 
 def genJoinCode() -> str:
@@ -21,15 +21,21 @@ class Session:
         self.joinCode: str | None = None
         self.wsRec: WebSocket | None = None
         self.senders: dict[str, dict] = {}  # clientId  {"ws", "name", "joined"}
-        self.nextClientNum = 1
+        self.nextSenderNum = 1
+        self.nextReceiverNum = 1
 
         self.state = SessionState.IDLE
         self.activeClientId: str | None = None
         self.pendingTimeoutTask: asyncio.Task | None = None
 
-    def nextClientId(self) -> str:
-        cid = f"client-{self.nextClientNum:06d}"
-        self.nextClientNum += 1
+    def nextSenderId(self) -> str:
+        cid = f"sender-{self.nextSenderNum:06d}"
+        self.nextSenderNum += 1
+        return cid
+
+    def nextReceiverId(self) -> str:
+        cid = f"receiver-{self.nextReceiverNum:06d}"
+        self.nextReceiverNum += 1
         return cid
 
     def ensureJoinCode(self) -> str:

@@ -1,11 +1,12 @@
-def serverHelloSender(clientId: str, receiverConnected: bool) -> dict:
+def serverHelloSender(
+    clientId: str, isBusy: bool, receiverConnected: bool
+) -> dict:
     return {
         "type": "SERVER_HELLO",
         "payload": {
             "clientId": clientId,
-            "isBusy": False,
+            "isBusy": isBusy,
             "receiverConnected": receiverConnected,
-            "joinCode": None,
         }
     }
 
