@@ -46,7 +46,8 @@ export function useReceiverSocket(serverIp: string = "localhost") {
   }, [])
 
   useEffect(() => {
-    const wsUrl = `ws://${serverIp}:8080/v1/receiver`
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${serverIp}:8080/v1/receiver`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 

@@ -60,7 +60,8 @@ export function useCastingSocket(serverIp: string = "localhost") {
   }, [])
 
   useEffect(() => {
-    const wsUrl = `ws://${serverIp}:8080/v1`
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${serverIp}:8080/v1`
     let ws: WebSocket | null = null
     try {
       ws = new WebSocket(wsUrl)
