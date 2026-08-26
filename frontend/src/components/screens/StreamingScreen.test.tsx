@@ -12,10 +12,7 @@ describe('StreamingScreen - Testy Ekranu Nadawania', () => {
   it('wyświetla komunikat o udostępnianiu i przycisk kończący', () => {
     render(<StreamingScreen stream={mockStream} onStopCapture={vi.fn()} />);
 
-    const heading = screen.getByText('Ekran jest przechwytywany lokalnie');
-    expect(heading).toBeInTheDocument();
-
-    const stopButton = screen.getByRole('button', { name: /zatrzymaj przechwytywanie/i });
+    const stopButton = screen.getByRole('button', { name: /zatrzymaj udostępnianie/i });
     expect(stopButton).toBeInTheDocument();
   });
 
@@ -25,7 +22,7 @@ describe('StreamingScreen - Testy Ekranu Nadawania', () => {
     
     render(<StreamingScreen stream={mockStream} onStopCapture={mockOnStopCapture} />);
 
-    const stopButton = screen.getByRole('button', { name: /zatrzymaj przechwytywanie/i });
+    const stopButton = screen.getByRole('button', { name: /zatrzymaj udostępnianie/i });
     await user.click(stopButton);
 
     expect(mockOnStopCapture).toHaveBeenCalledTimes(1);

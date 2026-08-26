@@ -10,7 +10,9 @@ services:
       - "8000"
       - --reload
     ports:
-      - "8000:8000"
+      - "8080:8000"
+    stdin_open: true
+    tty: true
     volumes:
       - ./backend:/app
 

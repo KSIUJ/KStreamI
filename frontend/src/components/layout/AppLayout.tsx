@@ -113,7 +113,7 @@ export function AppLayout({ children, status, userId, leftPanel }: AppLayoutProp
                 <>
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                   <span className="text-red-400 font-semibold">
-                    Podgląd lokalny
+                    Trwa transmisja
                   </span>
                 </>
               )}
@@ -142,9 +142,9 @@ export function AppLayout({ children, status, userId, leftPanel }: AppLayoutProp
         >
           <span>
             {status === "DISCONNECTED" && "Oczekiwanie na akcję użytkownika"}
-            {status === "LOBBY" && `Tymczasowe ID: ${userId}`}
+            {status === "LOBBY" && `Twoje ID: ${userId}`}
             {status === "STREAMING" &&
-              `Tymczasowe ID: ${userId} | Przechwytywanie lokalne`}
+              `Twoje ID: ${userId} | Przesyłanie wideo aktywne`}
           </span>
         </footer>
 
