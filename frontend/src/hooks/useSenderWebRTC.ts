@@ -19,7 +19,8 @@ export function useSenderWebRTC(
            username: import.meta.env.VITE_TURN_USER,
            credential: import.meta.env.VITE_TURN_PASS,
          },
-    ]
+    ],
+    iceTransportPolicy: "relay",
 })
     peerConnectionRef.current = pc
 
