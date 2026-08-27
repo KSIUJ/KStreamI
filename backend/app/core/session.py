@@ -23,6 +23,7 @@ class Session:
         self.senders: dict[str, dict] = {}  # clientId  {"ws", "name", "joined"}
         self.nextSenderNum = 1
         self.nextReceiverNum = 1
+        self.earlyIceCandidates: dict[str, list[dict]] = {}
 
         self.state = SessionState.IDLE
         self.activeClientId: str | None = None

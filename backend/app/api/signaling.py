@@ -266,6 +266,10 @@ async def ws_sender(websocket: WebSocket):
                     session.cancelPendingTimeout()
                     session.state = SessionState.ACTIVE
                     await session.wsRec.send_json(msg.offerRelay(payload.get("sdp"), clientId))
+                    for candidate in session.earlyIceCandidates.pop(clientId, []):
+                        await session.wsRec.send_json(
+                            msg.iceCandidateRelay(candidate.get("candidate"), candidate.get("sdpMid"), candidate.get("sdpMLineIndex"))
+                            )
                     await broadcastReceiverState()
 
                 else:
@@ -284,6 +288,8 @@ async def ws_sender(websocket: WebSocket):
                             payload.get("sdpMLineIndex"),
                         )
                     )
+                elif session.state == SessionState.PENDING and clientId == session.activeClientId:
+                    session.earlyIceCandidates.setdefault(clientId, []).append(payload)
                 else:
                     await websocket.send_json(msg.error("INVALID_STATE", "No active negotiation."))
 
@@ -305,10 +311,11 @@ async def ws_sender(websocket: WebSocket):
     except WebSocketDisconnect:
         wasJoined = session.senders[clientId]["joined"]
         wasActive = session.activeClientId == clientId and session.state != SessionState.IDLE
-        del session.senders[clientId]
+        session.earlyIceCandidates.pop(clientId, None)
 
         if wasActive:
             await cancelToIdle(notifySender=False, notifyReceiver=True)
+            del session.earlyIceCandidates[clientId]
         if wasJoined and session.wsRec:
             await sendJsonBestEffort(
                 session.wsRec,

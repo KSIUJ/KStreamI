@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { DevMockControls } from "@/components/dev/DevMockControls"
 
 interface DisconnectedScreenProps {
   pin: string
@@ -54,9 +53,10 @@ export function DisconnectedScreen({
           maxLength={pinLength === 6 ? 7 : pinLength}
           value={pin}
           onChange={handlePinChange}
-          className={`text-center text-2xl tracking-widest font-mono bg-slate-950 border text-emerald-400 h-14 uppercase transition-colors ${
-            errorMessage ? "border-red-500/80 focus:border-red-500" : "border-slate-700"
+          className={`text-center text-2xl tracking-widest font-mono bg-slate-950 border text-emerald-400 h-14 uppercase transition-colors !ring-0 !ring-offset-0 focus-visible:outline-none focus-visible:ring-0 ${
+            errorMessage ? "border-red-500/80 focus:border-red-500" : "border-slate-700 focus:border-slate-500"
           }`}
+          autoComplete="off"
         />
 
         {errorMessage && (
@@ -73,9 +73,6 @@ export function DisconnectedScreen({
       >
         Połącz
       </Button>
-
-      {/* --- DEV NOTE: TYLKO INFORMACJA O KODZIE 1234 --- */}
-      <DevMockControls showPinErrorHintOnly={true} />
     </form>
   )
 }

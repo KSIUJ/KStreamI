@@ -19,13 +19,17 @@ services:
     build: ./frontend
     expose:
       - "5173"
+    environment:
+      - VITE_TURN_HOST=${KSTREAMI_HOST:-localhost}
+      - VITE_TURN_USER=kstreami
+      - VITE_TURN_PASS=${TURN_PASSWORD:-zmien-to-haslo}
     depends_on:
       - backend
 
   caddy:
     image: caddy:2.11.4-alpine
     environment:
-      KSTREAMI_HOST: ${KSTREAMI_HOST:-localhost}
+      KSTREAMI_HOST: ${KSTREAMI_HOST:-192.168.0.29}
     ports:
       - "8080:8080"
     volumes:
@@ -35,6 +39,20 @@ services:
     depends_on:
       - backend
       - frontend
+
+  turn:
+    image: coturn/coturn:latest
+    network_mode: host          #coturn musi mieć realne porty UDP na hoście, przez Docker NAT nie zadziała!!
+    command:
+      - turnserver
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=kstreami
+      - --user=kstreami:${TURN_PASSWORD:-zmien-to-haslo}
+      - --no-cli
+      - --no-tls
+      - --no-dtls
 
 volumes:
   caddy_data:
