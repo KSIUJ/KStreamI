@@ -1,0 +1,63 @@
+name: kstreami-wss
+
+services:
+  backend:
+    build: ./backend
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    expose:
+      - "5173"
+    environment:
+      - VITE_TURN_HOST=${KSTREAMI_HOST}
+      - VITE_TURN_USER=kstreami
+      - VITE_TURN_PASS=${TURN_PASSWORD}
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    environment:
+      KSTREAMI_HOST: ${KSTREAMI_HOST}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+  turn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+    command:
+      - turnserver
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=kstreami
+      - --user=kstreami:${TURN_PASSWORD}
+      - --external-ip=${KSTREAMI_HOST}
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,19 +1,70 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { Button } from "@/components/ui/button"
+import { useReceiverSocket } from "@/hooks/useReceiverSocket"
+import { useReceiverWebRTC } from "@/hooks/useReceiverWebRTC"
+
+function VideoPlayer({ stream, className }: { stream: MediaStream | null, className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const videoElement = videoRef.current
+    if (!videoElement) return
+
+    if (stream) {
+      if (videoElement.srcObject !== stream) {
+        videoElement.srcObject = stream;
+      }
+      
+      videoElement.play().catch(e => {
+        if (e.name !== "AbortError") {
+          console.error("Błąd odtwarzania wideo:", e);
+        }
+      });
+    } else {
+      videoElement.srcObject = null
+    }
+  }, [stream])
+
+  return <video ref={videoRef} autoPlay playsInline muted className={className} />
+}
 
 export function ReceiverApp() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   
-  // MOCK DATA
-  const pin = "7392"
-  const connectedStudents = [
-    { id: '1', name: 'Macbook - Anna' },
-    { id: '2', name: 'Dell - Bartek' }
-  ]
-  
-  const [status, setStatus] = useState<"LOBBY" | "STREAMING">("LOBBY")
-  const [activeStudent, setActiveStudent] = useState<string | null>(null)
+  const { 
+    pin, 
+    connectedStudents, 
+    serverState, 
+    activeClientId, 
+    requestStreamFromClient, 
+    stopCasting,
+    sendMessage,
+    rtcMessageQueue
+  } = useReceiverSocket(window.location.hostname)
+
+  const { remoteStream, handleIncomingRTCMessage, stopWebRTC } = useReceiverWebRTC(sendMessage)
+
+  const processedCount = useRef(0)
+  useEffect(() => {
+    while (processedCount.current < rtcMessageQueue.length) {
+      const msg = rtcMessageQueue[processedCount.current]
+      handleIncomingRTCMessage(msg.type, msg.payload)
+      processedCount.current++
+    }
+  }, [rtcMessageQueue, handleIncomingRTCMessage])
+
+  useEffect(() => {
+    if (serverState === "IDLE") {
+      stopWebRTC()
+      setIsFullscreen(false)
+    }
+  }, [serverState, stopWebRTC])
+
+  const isStreaming = serverState !== "IDLE"
+
+  const activeStudentObj = connectedStudents.find(s => s.clientId === activeClientId)
+  const activeStudentName = activeStudentObj ? activeStudentObj.clientName : "Nieznany"
 
   // --- STANY DO PRZESUWANIA PASKA ---
   const [barPos, setBarPos] = useState({ x: 0, y: 0 })
@@ -40,14 +91,13 @@ export function ReceiverApp() {
   }
   // ------------------------------------
 
-  const handleSelectStudent = (name: string) => {
-    setActiveStudent(name)
-    setStatus("STREAMING")
+  const handleSelectStudent = (clientId: string) => {
+    requestStreamFromClient(clientId)
   }
 
   const handleStopSharing = () => {
-    setActiveStudent(null)
-    setStatus("LOBBY")
+    stopCasting()
+    stopWebRTC() 
     setIsFullscreen(false)
     setBarPos({ x: 0, y: 0 })
   }
@@ -59,7 +109,7 @@ export function ReceiverApp() {
           Kod dostępu sali
         </p>
         <h2 className="text-6xl font-bold text-emerald-400 tracking-widest drop-shadow-lg">
-          {pin}
+          {pin || "..."}
         </h2>
       </div>
 
@@ -70,12 +120,12 @@ export function ReceiverApp() {
         
         <ul className="space-y-3 overflow-y-auto flex-1 pr-2">
           {connectedStudents.map(student => (
-            <li key={student.id} className="flex justify-between items-center p-3 bg-slate-800/80 rounded-xl border border-slate-700/50 transition-colors">
-              <span className="font-medium text-slate-300">{student.name}</span>
+            <li key={student.clientId} className="flex justify-between items-center p-3 bg-slate-800/80 rounded-xl border border-slate-700/50 transition-colors">
+              <span className="font-medium text-slate-300">{student.clientName}</span>
               <Button 
                 size="sm"
-                onClick={() => handleSelectStudent(student.name)}
-                disabled={status === "STREAMING"}
+                onClick={() => handleSelectStudent(student.clientId)}
+                disabled={isStreaming}
                 className="bg-slate-700 hover:bg-emerald-600 text-white cursor-pointer disabled:cursor-not-allowed"
               >
                 Wybierz
@@ -89,7 +139,7 @@ export function ReceiverApp() {
         <Button 
           variant="destructive" 
           className="w-full py-6 text-lg font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-100 disabled:bg-red-950/60 disabled:text-white/20"
-          disabled={status !== "STREAMING"}
+          disabled={!isStreaming}
           onClick={handleStopSharing}
         >
           Zatrzymaj udostępnianie
@@ -98,15 +148,16 @@ export function ReceiverApp() {
     </div>
   )
 
-  if (isFullscreen && status === "STREAMING") {
+  if (isFullscreen && isStreaming) {
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center overflow-hidden">
-        <div className="text-slate-500 text-xl border-2 border-dashed border-slate-800 p-20 rounded-3xl">
-          [MOCK] Ekran udostępniany przez: <span className="text-white">{activeStudent}</span>
+        {/* Renderujemy PRAWDZIWE WIDEO na pełnym ekranie zamiast mocka */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <VideoPlayer stream={remoteStream} className="w-full h-full object-contain" />
         </div>
         
         <div 
-          className="absolute bottom-8 bg-slate-900/90 backdrop-blur-md p-2 pr-3 rounded-2xl border border-slate-700 flex items-center gap-3 shadow-2xl"
+          className="absolute bottom-8 bg-slate-900/90 backdrop-blur-md p-2 pr-3 rounded-2xl border border-slate-700 flex items-center gap-3 shadow-2xl z-10"
           style={{ transform: `translate(${barPos.x}px, ${barPos.y}px)` }}
         >
            <div 
@@ -141,22 +192,28 @@ export function ReceiverApp() {
   }
 
   return (
-    <AppLayout status={status} userId="SALA_102" leftPanel={customLeftPanel}>
-      <div className="w-full aspect-video bg-black/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex flex-col items-center justify-center relative overflow-hidden">
-        {status === "STREAMING" ? (
+    <AppLayout status={isStreaming ? "STREAMING" : "LOBBY"} userId="Odbiornik Główny" leftPanel={customLeftPanel}>
+      <div className="w-full aspect-video bg-black/50 backdrop-blur-sm rounded-2xl border border-slate-700/50 flex flex-col items-center justify-center relative overflow-hidden">        {isStreaming ? (
            <>
-             <div className="text-emerald-500/50 text-2xl font-mono">
-                [STRUMIEŃ WIDEO: {activeStudent}]
-             </div>
+             {remoteStream ? (
+               <VideoPlayer stream={remoteStream} className="w-full h-full object-contain absolute inset-0 z-0" />
+             ) : (
+               <div className="absolute inset-0 flex flex-col items-center justify-center z-0 text-emerald-500/70">
+                 <span className="w-12 h-12 rounded-full border-4 border-emerald-500/30 border-t-emerald-500 animate-spin mb-4" />
+                 <p className="font-medium animate-pulse tracking-wide">Zestawianie połączenia wideo...</p>
+               </div>
+             )}
+             
              <Button 
-                className="absolute bottom-6 right-6 cursor-pointer" 
+                className="absolute bottom-6 right-6 cursor-pointer z-10 shadow-lg" 
                 onClick={() => setIsFullscreen(true)}
+                disabled={!remoteStream}
              >
                Powiększ (Pełny ekran)
              </Button>
            </>
         ) : (
-           <div className="text-center">
+           <div className="text-center z-10">
              <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mx-auto mb-4 border border-slate-700">
                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
              </div>

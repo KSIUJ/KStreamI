@@ -19,13 +19,17 @@ services:
     build: ./frontend
     expose:
       - "5173"
+    environment:
+      - VITE_TURN_HOST=${KSTREAMI_HOST}
+      - VITE_TURN_USER=kstreami
+      - VITE_TURN_PASS=${TURN_PASSWORD}
     depends_on:
       - backend
 
   caddy:
     image: caddy:2.11.4-alpine
     environment:
-      KSTREAMI_HOST: ${KSTREAMI_HOST:-localhost}
+      KSTREAMI_HOST: ${KSTREAMI_HOST}
     ports:
       - "8080:8080"
     volumes:
@@ -35,6 +39,21 @@ services:
     depends_on:
       - backend
       - frontend
+
+  # network_mode: host nie działa poprawnie pod Docker Desktop na Windows.
+  turn:
+    image: coturn/coturn:latest
+    network_mode: host
+    command:
+      - turnserver
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=kstreami
+      - --user=kstreami:${TURN_PASSWORD}
+      - --no-cli
+      - --no-tls
+      - --no-dtls
 
 volumes:
   caddy_data:
