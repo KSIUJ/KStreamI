@@ -120,7 +120,6 @@ _TBD_
 
 👩🏼‍💻[Maria Bagińska](https://github.com/MarBi361)<br>
 👩🏼‍💻[Zofia Bolesławska](https://github.com/Szopx)<br>
-👨🏻‍💻[Dmytro Dychenko](https://github.com/BuffePOK)<br>
 👨🏻‍💻[Jakub Karczyński](https://github.com/Kuba-kr)<br>
 👩🏼‍💻[Urszula Pilśniak](https://github.com/UlaPil)<br>
 
