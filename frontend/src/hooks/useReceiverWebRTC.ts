@@ -27,7 +27,7 @@ export function useReceiverWebRTC(
                 credential: import.meta.env.VITE_TURN_PASS,
             },
           ],
-          iceTransportPolicy: "relay",
+          // iceTransportPolicy: "relay",
         })
         peerConnectionRef.current = pc
 

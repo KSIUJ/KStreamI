@@ -10,7 +10,7 @@ export function useCastingSocket(
   const [clientId, setClientId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [retryTrigger, setRetryTrigger] = useState(0)
-  const [incomingRTCMessage, setIncomingRTCMessage] = useState<{type: string, payload: any} | null>(null)
+  const [rtcMessageQueue, setRtcMessageQueue] = useState<{type: string, payload: any}[]>([])
   const [castRequestTrigger, setCastRequestTrigger] = useState(0)
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -50,7 +50,7 @@ export function useCastingSocket(
           break
         case "ANSWER":
         case "ICE_CANDIDATE":
-          setIncomingRTCMessage({ type, payload }) // Odpowiedź WebRTC od rzutnika
+          setRtcMessageQueue(prev => [...prev, { type, payload }])
           break
         case "STOP_CASTING":
           setStatus("LOBBY")
@@ -120,7 +120,7 @@ export function useCastingSocket(
     joinRoom,
     disconnect,
     sendMessage,
-    incomingRTCMessage,
+    rtcMessageQueue,
     castRequestTrigger
   }
 }

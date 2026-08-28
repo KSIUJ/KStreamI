@@ -35,7 +35,7 @@ export default function App() {
     joinRoom,
     disconnect,
     sendMessage,
-    incomingRTCMessage,
+    rtcMessageQueue,
     castRequestTrigger,
   } = useCastingSocket(window.location.hostname, stopCapture) // <- onStopCasting = stopCapture
 
@@ -53,11 +53,14 @@ export default function App() {
     }
   }, [castRequestTrigger, handleStartCapture])
 
+  const processedCount = useRef(0)
   useEffect(() => {
-    if (incomingRTCMessage) {
-      handleIncomingRTCMessage(incomingRTCMessage.type, incomingRTCMessage.payload)
+    while (processedCount.current < rtcMessageQueue.length) {
+      const msg = rtcMessageQueue[processedCount.current]
+      handleIncomingRTCMessage(msg.type, msg.payload)
+      processedCount.current++
     }
-  }, [incomingRTCMessage, handleIncomingRTCMessage])
+  }, [rtcMessageQueue, handleIncomingRTCMessage])
 
   // Lokalny capture skończył się (np. user kliknął "stop sharing" w przeglądarce)
   // -> poinformuj serwer. Zakończenie zainicjowane PRZEZ serwer (STOP_CASTING z WS)

@@ -11,7 +11,7 @@ export function useReceiverSocket(serverIp: string = "localhost") {
   const [serverState, setServerState] = useState<"IDLE" | "PENDING" | "ACTIVE">("IDLE")
   const [activeClientId, setActiveClientId] = useState<string | null>(null)
 
-  const [incomingRTCMessage, setIncomingRTCMessage] = useState<{type: string, payload: any} | null>(null)
+  const [rtcMessageQueue, setRtcMessageQueue] = useState<{type: string, payload: any}[]>([])
 
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -37,7 +37,7 @@ export function useReceiverSocket(serverIp: string = "localhost") {
           break
         case "OFFER":
         case "ICE_CANDIDATE":
-          setIncomingRTCMessage({ type, payload })
+          setRtcMessageQueue(prev => [...prev, { type, payload }])
           break
       }
     } catch (err) {
@@ -87,6 +87,6 @@ export function useReceiverSocket(serverIp: string = "localhost") {
     requestStreamFromClient, 
     stopCasting,
     sendMessage,
-    incomingRTCMessage
+    rtcMessageQueue
   }
 }

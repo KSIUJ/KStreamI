@@ -40,16 +40,19 @@ export function ReceiverApp() {
     requestStreamFromClient, 
     stopCasting,
     sendMessage,
-    incomingRTCMessage
+    rtcMessageQueue
   } = useReceiverSocket(window.location.hostname)
 
   const { remoteStream, handleIncomingRTCMessage, stopWebRTC } = useReceiverWebRTC(sendMessage)
 
+  const processedCount = useRef(0)
   useEffect(() => {
-    if (incomingRTCMessage) {
-      handleIncomingRTCMessage(incomingRTCMessage.type, incomingRTCMessage.payload)
+    while (processedCount.current < rtcMessageQueue.length) {
+      const msg = rtcMessageQueue[processedCount.current]
+      handleIncomingRTCMessage(msg.type, msg.payload)
+      processedCount.current++
     }
-  }, [incomingRTCMessage, handleIncomingRTCMessage])
+  }, [rtcMessageQueue, handleIncomingRTCMessage])
 
   useEffect(() => {
     if (serverState === "IDLE") {
