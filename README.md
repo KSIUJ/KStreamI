@@ -22,8 +22,7 @@ _TBD_
 <!-- TODO: -->
 
 ## Tech stack
-_TBD_
-<!-- TODO: -->
+[![Tech stack](https://skillicons.dev/icons?i=react,ts,fastapi,python,docker)](https://skillicons.dev)
 
 ## Getting started
 
