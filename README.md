@@ -125,7 +125,3 @@ _TBD_
 **Mentor**<br>
 👩🏼‍💻[Kinga Żmuda](https://github.com/kingazm)
 <!-- TODO -->
-
-## License
-
-<!-- TODO: decide a license -->
