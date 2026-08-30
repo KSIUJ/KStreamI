@@ -4,7 +4,7 @@ Wireless screen-casting to classroom projectors over the faculty network.
 Cast your screen to the projector without leaving your seat - no cables, no
 adapter roulette. Think Chromecast, but built to work on the faculty network.
 
-> Status: 🚧 In development - KSInternships project, [2026]. Pre-MVP.
+> KSInternships project, [2026]. MVP.
 
 ## The problem
 
